@@ -1,8 +1,8 @@
-// src/components/Main.tsx - UPDATED: Non-clickable urgent emoji
+// src/components/Main.tsx - FIXED: No auto-navigation when marking as complete
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext, useNavigate } from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
 import type { Task } from "@/store";
 import {
   CheckCircle2,
@@ -149,7 +149,7 @@ const TaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  {/* UPDATED: Non-clickable urgent emoji */}
+                  {/* Non-clickable urgent emoji */}
                   {task.isUrgent && !task.completed && (
                     <span
                       className="text-lg animate-pulse pointer-events-none select-none"
@@ -286,7 +286,6 @@ const TaskCard = memo(
 TaskCard.displayName = "TaskCard";
 
 export function Main() {
-  const navigate = useNavigate();
   const { getToken } = useAuth();
   const { token: jwtToken } = useAuthStore();
   const context = useOutletContext<OutletContext>();
@@ -354,34 +353,29 @@ export function Main() {
     return null;
   }, [authMethod, getToken, jwtToken]);
 
+  // ✅ FIXED: NO auto-navigation when marking as complete
   const handleToggleComplete = useCallback(
     async (id: number, currentStatus: boolean) => {
       const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { completed: !currentStatus });
-
-        // Navigate to completed tab if marking as complete
-        if (!currentStatus) {
-          navigate("/completed");
-        }
+        // ❌ REMOVED: navigate("/completed")
+        // User stays on Main page
       }
     },
-    [getAuthToken, updateTask, navigate]
+    [getAuthToken, updateTask]
   );
 
+  // ✅ ALREADY FIXED: NO auto-navigation when marking as urgent
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
       const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { isUrgent: !currentStatus });
-
-        // Navigate to urgent tab if marking as urgent
-        if (!currentStatus) {
-          navigate("/urgent");
-        }
+        // User stays on Main page
       }
     },
-    [getAuthToken, updateTask, navigate]
+    [getAuthToken, updateTask]
   );
 
   const handleStartEdit = useCallback((task: Task) => {
