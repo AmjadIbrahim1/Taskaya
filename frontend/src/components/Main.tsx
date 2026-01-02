@@ -1,8 +1,8 @@
-// src/components/Main.tsx - FIXED: Edit state management
+// src/components/Main.tsx - FIXED: Removed auto-navigation on urgent toggle
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext, useNavigate } from "react-router-dom";
+import { useOutletContext } from "react-router-dom"; // ✅ REMOVED useNavigate
 import type { Task } from "@/store";
 import {
   CheckCircle2,
@@ -309,7 +309,7 @@ const TaskCard = memo(
 TaskCard.displayName = "TaskCard";
 
 export function Main() {
-  const navigate = useNavigate();
+  // ❌ REMOVED: const navigate = useNavigate();
   const { getToken } = useAuth();
   const { token: jwtToken } = useAuthStore();
   const context = useOutletContext<OutletContext>();
@@ -382,20 +382,17 @@ export function Main() {
     [getAuthToken, updateTask]
   );
 
+  // ✅ FIXED: Removed navigation - just update the task
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
       const token = await getAuthToken();
       if (token) {
-        const newUrgentStatus = !currentStatus;
-        await updateTask(token, id, { isUrgent: newUrgentStatus });
-
-        if (newUrgentStatus) {
-          console.log("🔥 Navigating to Urgent tab");
-          navigate("/urgent");
-        }
+        await updateTask(token, id, { isUrgent: !currentStatus });
+        // ❌ REMOVED: Navigation logic
+        console.log("✅ Task urgent status updated (staying on Main page)");
       }
     },
-    [getAuthToken, updateTask, navigate]
+    [getAuthToken, updateTask] // ❌ REMOVED: navigate dependency
   );
 
   const handleStartEdit = useCallback((task: Task) => {
