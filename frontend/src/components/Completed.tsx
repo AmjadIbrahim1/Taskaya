@@ -1,8 +1,8 @@
-// src/components/Completed.tsx - UPDATED: Non-clickable emojis
+// src/components/Completed.tsx - ENHANCED with navigation on toggle
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import type { Task } from "@/store";
 import {
   CheckCircle2,
@@ -114,7 +114,6 @@ const CompletedTaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  {/* UPDATED: Non-clickable emojis */}
                   <span
                     className="text-2xl pointer-events-none select-none"
                     aria-label="Completed task"
@@ -219,6 +218,7 @@ export function Completed({
 }: {
   authMethod?: "clerk" | "jwt" | null;
 }) {
+  const navigate = useNavigate();
   const { getToken } = useAuth();
   const { token: jwtToken } = useAuthStore();
   const outletContext = useOutletContext<OutletContext>();
@@ -256,7 +256,6 @@ export function Completed({
     [tasks]
   );
 
-  // Stats for cross-tab display
   const stats = useMemo(() => {
     const completedTotal = completedTasks.length;
     const completedUrgent = completedTasks.filter((t) => t.isUrgent).length;
@@ -288,14 +287,23 @@ export function Completed({
     [getAuthToken, updateTask]
   );
 
+  // ✅ NEW: Navigate to Urgent ONLY when marking completed task as urgent
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
       const token = await getAuthToken();
       if (token) {
-        await updateTask(token, id, { isUrgent: !currentStatus });
+        const newUrgentStatus = !currentStatus;
+        await updateTask(token, id, { isUrgent: newUrgentStatus });
+
+        // ✅ Navigate to Urgent tab ONLY if marking as urgent
+        if (newUrgentStatus) {
+          console.log("🔥 Navigating to Urgent tab from Completed");
+          navigate("/urgent");
+        }
+        // ❌ Do NOT navigate when removing urgent status
       }
     },
-    [getAuthToken, updateTask]
+    [getAuthToken, updateTask, navigate]
   );
 
   const handleDelete = useCallback(async () => {
@@ -395,7 +403,6 @@ export function Completed({
         </div>
       </div>
 
-      {/* Stats Grid - Showing Urgent & All Tasks */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-500 delay-100">
         <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-2 border-green-500/30 rounded-2xl p-6">
           <div className="flex items-center justify-between">

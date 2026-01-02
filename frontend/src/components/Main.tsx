@@ -1,8 +1,8 @@
-// src/components/Main.tsx - FIXED: No auto-navigation when marking as complete
+// src/components/Main.tsx - FIXED: Edit state management
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import type { Task } from "@/store";
 import {
   CheckCircle2,
@@ -23,7 +23,7 @@ type OutletContext = {
   authMethod: "clerk" | "jwt" | null;
 };
 
-// Optimized TaskCard with memo and non-clickable emoji
+// Optimized TaskCard with memo and editable inputs
 const TaskCard = memo(
   ({
     task,
@@ -47,7 +47,7 @@ const TaskCard = memo(
     };
     onEditChange: (field: string, value: any) => void;
     onToggleComplete: (id: number, status: boolean) => void;
-    onToggleUrgent: (id: number, status: boolean) => void;
+    onToggleUrgent: (id: number, currentStatus: boolean) => void;
     onStartEdit: (task: Task) => void;
     onDeleteClick: (id: number) => void;
     onSaveEdit: (id: number) => void;
@@ -69,11 +69,12 @@ const TaskCard = memo(
               e.stopPropagation();
               onToggleComplete(task.id, task.completed);
             }}
+            disabled={isEditing}
             className={`mt-1 flex-shrink-0 transition-all hover:scale-110 ${
               task.completed
                 ? "text-green-500"
                 : "text-muted-foreground hover:text-green-500"
-            }`}
+            } ${isEditing ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {task.completed ? (
               <CheckCircle2 className="w-6 h-6" />
@@ -88,22 +89,41 @@ const TaskCard = memo(
                 <input
                   type="text"
                   value={editData.title}
-                  onChange={(e) => onEditChange("title", e.target.value)}
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEditChange("title", e.target.value);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onFocus={(e) => e.target.select()}
                   placeholder="Task title..."
                   className="w-full px-3 py-2 rounded-lg bg-background border-2 border-primary focus:ring-2 focus:ring-primary/20 outline-none font-bold"
                   autoFocus
                 />
                 <textarea
                   value={editData.description}
-                  onChange={(e) => onEditChange("description", e.target.value)}
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEditChange("description", e.target.value);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   placeholder="Description (optional)..."
                   className="w-full px-3 py-2 rounded-lg bg-background border-2 border-input focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   rows={2}
                 />
-                <CustomDatePicker
-                  value={editData.deadline}
-                  onChange={(val) => onEditChange("deadline", val)}
-                />
+                <div onClick={(e) => e.stopPropagation()}>
+                  <CustomDatePicker
+                    value={editData.deadline}
+                    onChange={(val) => onEditChange("deadline", val)}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -149,7 +169,6 @@ const TaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  {/* Non-clickable urgent emoji */}
                   {task.isUrgent && !task.completed && (
                     <span
                       className="text-lg animate-pulse pointer-events-none select-none"
@@ -278,7 +297,11 @@ const TaskCard = memo(
       prev.task.isUrgent === next.task.isUrgent &&
       prev.task.description === next.task.description &&
       prev.task.deadline === next.task.deadline &&
-      prev.isEditing === next.isEditing
+      prev.isEditing === next.isEditing &&
+      prev.editData.title === next.editData.title &&
+      prev.editData.description === next.editData.description &&
+      prev.editData.deadline === next.editData.deadline &&
+      prev.editData.isUrgent === next.editData.isUrgent
     );
   }
 );
@@ -286,6 +309,7 @@ const TaskCard = memo(
 TaskCard.displayName = "TaskCard";
 
 export function Main() {
+  const navigate = useNavigate();
   const { getToken } = useAuth();
   const { token: jwtToken } = useAuthStore();
   const context = useOutletContext<OutletContext>();
@@ -315,7 +339,6 @@ export function Main() {
     loadTasks();
   }, [authMethod, fetchTasks, getToken, jwtToken]);
 
-  // Optimized stats calculation - INCLUDING COMPLETED
   const stats = useMemo(() => {
     const urgentActive = tasks.filter((t) => t.isUrgent && !t.completed).length;
     const normalActive = tasks.filter(
@@ -323,16 +346,12 @@ export function Main() {
     ).length;
     const completed = tasks.filter((t) => t.completed).length;
     const urgentTotal = tasks.filter((t) => t.isUrgent).length;
-    const urgentCompleted = tasks.filter(
-      (t) => t.isUrgent && t.completed
-    ).length;
 
     return {
       urgentCount: urgentActive,
       normalCount: normalActive,
       completedCount: completed,
       urgentTotal,
-      urgentCompleted,
       totalTasks: tasks.length,
     };
   }, [tasks]);
@@ -353,32 +372,34 @@ export function Main() {
     return null;
   }, [authMethod, getToken, jwtToken]);
 
-  // ✅ FIXED: NO auto-navigation when marking as complete
   const handleToggleComplete = useCallback(
     async (id: number, currentStatus: boolean) => {
       const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { completed: !currentStatus });
-        // ❌ REMOVED: navigate("/completed")
-        // User stays on Main page
       }
     },
     [getAuthToken, updateTask]
   );
 
-  // ✅ ALREADY FIXED: NO auto-navigation when marking as urgent
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
       const token = await getAuthToken();
       if (token) {
-        await updateTask(token, id, { isUrgent: !currentStatus });
-        // User stays on Main page
+        const newUrgentStatus = !currentStatus;
+        await updateTask(token, id, { isUrgent: newUrgentStatus });
+
+        if (newUrgentStatus) {
+          console.log("🔥 Navigating to Urgent tab");
+          navigate("/urgent");
+        }
       }
     },
-    [getAuthToken, updateTask]
+    [getAuthToken, updateTask, navigate]
   );
 
   const handleStartEdit = useCallback((task: Task) => {
+    console.log("✏️ Starting edit for task:", task.id);
     setEditingId(task.id);
     setEditTitle(task.title);
     setEditDescription(task.description || "");
@@ -388,7 +409,19 @@ export function Main() {
 
   const handleSaveEdit = useCallback(
     async (id: number) => {
-      if (!editTitle.trim()) return;
+      if (!editTitle.trim()) {
+        console.log("❌ Title is empty, cannot save");
+        return;
+      }
+
+      console.log("💾 Saving task:", {
+        id,
+        title: editTitle,
+        description: editDescription,
+        deadline: editDeadline,
+        isUrgent: editIsUrgent,
+      });
+
       const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, {
@@ -411,10 +444,12 @@ export function Main() {
   );
 
   const handleCancelEdit = useCallback(() => {
+    console.log("❌ Canceling edit");
     setEditingId(null);
   }, []);
 
   const handleEditChange = useCallback((field: string, value: any) => {
+    console.log("📝 Edit change:", field, "=", value);
     switch (field) {
       case "title":
         setEditTitle(value);

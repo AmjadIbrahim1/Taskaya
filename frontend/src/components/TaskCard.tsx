@@ -1,4 +1,4 @@
-// src/components/TaskCard.tsx - UPDATED: Urgent emoji non-clickable
+// src/components/TaskCard.tsx - FIXED: Fully editable inputs
 import { memo } from "react";
 import {
   CheckCircle2,
@@ -75,11 +75,12 @@ export const TaskCard = memo(
               e.stopPropagation();
               onToggleComplete(task.id, task.completed);
             }}
+            disabled={isEditing}
             className={`mt-1 flex-shrink-0 transition-all hover:scale-110 ${
               task.completed
                 ? "text-green-500"
                 : "text-muted-foreground hover:text-green-500"
-            }`}
+            } ${isEditing ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {task.completed ? (
               <CheckCircle2 className="w-6 h-6" />
@@ -92,25 +93,51 @@ export const TaskCard = memo(
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <div className="space-y-3">
+                {/* Title Input - FIXED */}
                 <input
                   type="text"
                   value={editData.title}
-                  onChange={(e) => onEditChange("title", e.target.value)}
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEditChange("title", e.target.value);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onFocus={(e) => e.target.select()}
                   placeholder="Task title..."
                   className="w-full px-3 py-2 rounded-lg bg-background border-2 border-primary focus:ring-2 focus:ring-primary/20 outline-none font-bold"
                   autoFocus
                 />
+
+                {/* Description Textarea - FIXED */}
                 <textarea
                   value={editData.description}
-                  onChange={(e) => onEditChange("description", e.target.value)}
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEditChange("description", e.target.value);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   placeholder="Description (optional)..."
                   className="w-full px-3 py-2 rounded-lg bg-background border-2 border-input focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none"
                   rows={2}
                 />
-                <CustomDatePicker
-                  value={editData.deadline}
-                  onChange={(val) => onEditChange("deadline", val)}
-                />
+
+                {/* Date Picker - FIXED */}
+                <div onClick={(e) => e.stopPropagation()}>
+                  <CustomDatePicker
+                    value={editData.deadline}
+                    onChange={(val) => onEditChange("deadline", val)}
+                  />
+                </div>
+
+                {/* Urgent Toggle - FIXED */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -126,6 +153,8 @@ export const TaskCard = memo(
                 >
                   {editData.isUrgent ? "🔥 Urgent" : "⭐ Normal"}
                 </button>
+
+                {/* Action Buttons */}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -156,7 +185,7 @@ export const TaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  {/* UPDATED: Non-clickable urgent emoji */}
+                  {/* Non-clickable urgent emoji */}
                   {task.isUrgent && !task.completed && (
                     <span
                       className="text-lg animate-pulse pointer-events-none select-none"
@@ -286,7 +315,11 @@ export const TaskCard = memo(
       prev.task.isUrgent === next.task.isUrgent &&
       prev.task.description === next.task.description &&
       prev.task.deadline === next.task.deadline &&
-      prev.isEditing === next.isEditing
+      prev.isEditing === next.isEditing &&
+      prev.editData.title === next.editData.title &&
+      prev.editData.description === next.editData.description &&
+      prev.editData.deadline === next.editData.deadline &&
+      prev.editData.isUrgent === next.editData.isUrgent
     );
   }
 );
