@@ -1,10 +1,8 @@
-// src/components/Login.tsx
+// src/components/Login.tsx - OPTIMIZED: Instant redirect after login
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store";
 import { Eye, EyeOff, LogIn, Loader2, ArrowLeft } from "lucide-react";
-import { loginSchema, type LoginInput } from "@/lib/validations";
-import { z } from "zod";
 
 interface LoginProps {
   onSwitchToRegister: () => void;
@@ -17,9 +15,10 @@ export function Login({ onSwitchToRegister, onBack }: LoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof LoginInput, string>>
-  >({});
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+  }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [generalError, setGeneralError] = useState("");
 
@@ -41,8 +40,10 @@ export function Login({ onSwitchToRegister, onBack }: LoginProps) {
 
     setIsLoading(true);
     try {
+      // OPTIMIZED: Login and immediately navigate
       await login(email, password);
-      // Success - navigate to home
+
+      // INSTANT REDIRECT - No setTimeout, no delays
       navigate("/", { replace: true });
     } catch (err: any) {
       console.error("Login error:", err);
@@ -50,9 +51,9 @@ export function Login({ onSwitchToRegister, onBack }: LoginProps) {
         err?.message ||
           "Invalid credentials. Please check your email and password."
       );
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Only set loading false on error
     }
+    // Note: We don't set isLoading(false) on success to avoid re-render before navigation
   };
 
   return (
@@ -60,7 +61,8 @@ export function Login({ onSwitchToRegister, onBack }: LoginProps) {
       <div className="w-full max-w-md">
         <button
           onClick={onBack}
-          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-all"
+          disabled={isLoading}
+          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-all disabled:opacity-50"
         >
           <ArrowLeft className="w-5 h-5" />
           <span className="font-bold">Back to options</span>
@@ -101,6 +103,7 @@ export function Login({ onSwitchToRegister, onBack }: LoginProps) {
                 } focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all duration-200 placeholder:text-muted-foreground font-bold shadow-lg`}
                 placeholder="you@example.com"
                 disabled={isLoading}
+                autoComplete="email"
               />
               {errors.email && (
                 <p className="text-destructive text-sm font-bold">
@@ -123,12 +126,14 @@ export function Login({ onSwitchToRegister, onBack }: LoginProps) {
                   } focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all duration-200 placeholder:text-muted-foreground font-bold shadow-lg`}
                   placeholder="Enter your password"
                   disabled={isLoading}
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-all hover:scale-110"
                   disabled={isLoading}
+                  tabIndex={-1}
                 >
                   {showPassword ? (
                     <EyeOff className="w-5 h-5" />

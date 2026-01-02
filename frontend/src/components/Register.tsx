@@ -1,10 +1,8 @@
-// src/components/Register.tsx
+// src/components/Register.tsx - OPTIMIZED: Instant redirect after register
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store";
 import { Eye, EyeOff, UserPlus, Loader2, ArrowLeft } from "lucide-react";
-import { registerSchema, type RegisterInput } from "@/lib/validations";
-import { z } from "zod";
 
 interface RegisterProps {
   onSwitchToLogin: () => void;
@@ -19,9 +17,11 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof RegisterInput, string>>
-  >({});
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [generalError, setGeneralError] = useState("");
 
@@ -31,7 +31,11 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
     setGeneralError("");
 
     // Basic validation
-    const fieldErrors: Partial<Record<keyof RegisterInput, string>> = {};
+    const fieldErrors: {
+      email?: string;
+      password?: string;
+      confirmPassword?: string;
+    } = {};
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       fieldErrors.email = "Please enter a valid email address";
@@ -52,15 +56,17 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
 
     setIsLoading(true);
     try {
+      // OPTIMIZED: Register and immediately navigate
       await register(email, password);
-      // Success - navigate to home
+
+      // INSTANT REDIRECT - No setTimeout, no delays
       navigate("/", { replace: true });
     } catch (err: any) {
       console.error("Registration error:", err);
       setGeneralError(err?.message || "Registration failed. Please try again.");
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Only set loading false on error
     }
+    // Note: We don't set isLoading(false) on success to avoid re-render before navigation
   };
 
   return (
@@ -68,7 +74,8 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
       <div className="w-full max-w-md">
         <button
           onClick={onBack}
-          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-all"
+          disabled={isLoading}
+          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-all disabled:opacity-50"
         >
           <ArrowLeft className="w-5 h-5" />
           <span className="font-bold">Back to options</span>
@@ -109,6 +116,7 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
                 } focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all font-bold shadow-lg`}
                 placeholder="you@example.com"
                 disabled={isLoading}
+                autoComplete="email"
               />
               {errors.email && (
                 <p className="text-destructive text-sm font-bold">
@@ -131,12 +139,14 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
                   } focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all font-bold shadow-lg`}
                   placeholder="Create a password"
                   disabled={isLoading}
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-all hover:scale-110"
                   disabled={isLoading}
+                  tabIndex={-1}
                 >
                   {showPassword ? (
                     <EyeOff className="w-5 h-5" />
@@ -168,12 +178,14 @@ export function Register({ onSwitchToLogin, onBack }: RegisterProps) {
                   } focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all font-bold shadow-lg`}
                   placeholder="Confirm your password"
                   disabled={isLoading}
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-all hover:scale-110"
                   disabled={isLoading}
+                  tabIndex={-1}
                 >
                   {showConfirmPassword ? (
                     <EyeOff className="w-5 h-5" />

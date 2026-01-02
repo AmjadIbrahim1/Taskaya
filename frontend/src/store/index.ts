@@ -1,4 +1,4 @@
-// src/store/index.ts - OPTIMIZED: Request deduplication + better caching
+// src/store/index.ts - OPTIMIZED: Lazy task loading after auth
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -40,17 +40,15 @@ interface AuthState {
 interface TaskState {
   tasks: Task[];
   allTasks: Task[];
-  completedTasks: Task[]; // NEW: Separate cache for completed
-  urgentTasks: Task[]; // NEW: Separate cache for urgent
+  completedTasks: Task[];
+  urgentTasks: Task[];
   isLoading: boolean;
   error: string | null;
   lastFetch: number;
-  lastCompletedFetch: number; // NEW
-  lastUrgentFetch: number; // NEW
+  lastCompletedFetch: number;
+  lastUrgentFetch: number;
   searchQuery: string;
   currentView: "all" | "completed" | "urgent";
-
-  // Track pending requests to prevent duplicates
   pendingRequests: Set<string>;
 
   fetchTasks: (token: string, force?: boolean) => Promise<void>;
@@ -74,7 +72,7 @@ interface TaskState {
 }
 
 const API_URL = "http://localhost:5000/api";
-const CACHE_TIME = 5000; // 5 seconds - shorter for better UX
+const CACHE_TIME = 5000; // 5 seconds
 
 const fetchAPI = async (
   url: string,
@@ -136,6 +134,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // OPTIMIZED: Faster login without unnecessary operations
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
@@ -144,6 +143,7 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({ email, password }),
           });
 
+          // Set auth state immediately
           set({
             user: data.user,
             token: data.accessToken,
@@ -152,6 +152,8 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
           });
+
+          // Note: Tasks will be loaded lazily by components, not here
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Login failed";
@@ -160,6 +162,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // OPTIMIZED: Faster register without unnecessary operations
       register: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
@@ -168,6 +171,7 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({ email, password }),
           });
 
+          // Set auth state immediately
           set({
             user: data.user,
             token: data.accessToken,
@@ -176,6 +180,8 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
           });
+
+          // Note: Tasks will be loaded lazily by components, not here
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Registration failed";
@@ -300,7 +306,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     set({ tasks: filtered, currentView: view });
   },
 
-  // OPTIMIZED: fetchTasks - Combines all tasks from all endpoints
   fetchTasks: async (token: string, force = false) => {
     if (!token) {
       set({ error: "Please login to view tasks" });
@@ -310,7 +315,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const requestKey = "fetch-all-tasks";
     const { pendingRequests, lastFetch, allTasks } = get();
 
-    // Check if request is already pending
     if (pendingRequests.has(requestKey)) {
       console.log("⏸️ Request already pending, skipping...");
       return;
@@ -318,13 +322,11 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const now = Date.now();
 
-    // Use cache if not forced and cache is fresh
     if (!force && now - lastFetch < CACHE_TIME && allTasks.length > 0) {
       console.log("✅ Using cached all tasks");
       return;
     }
 
-    // Mark request as pending
     pendingRequests.add(requestKey);
     set({
       isLoading: true,
@@ -333,14 +335,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     });
 
     try {
-      // Fetch from all 3 endpoints in parallel
       const [pendingData, completedData, urgentData] = await Promise.all([
         fetchAPI(`${API_URL}/tasks`, token),
         fetchAPI(`${API_URL}/tasks/completed`, token),
         fetchAPI(`${API_URL}/tasks/urgent`, token),
       ]);
 
-      // Combine all tasks and remove duplicates
       const allTasksMap = new Map<number, Task>();
 
       [
@@ -376,7 +376,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     }
   },
 
-  // OPTIMIZED: getCompletedTasks with separate cache
   getCompletedTasks: async (token: string) => {
     if (!token) {
       set({ error: "Please login to view tasks" });
@@ -386,7 +385,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const requestKey = "fetch-completed-tasks";
     const { pendingRequests, lastCompletedFetch, completedTasks } = get();
 
-    // Check if already pending
     if (pendingRequests.has(requestKey)) {
       console.log("⏸️ Completed tasks request already pending, skipping...");
       return;
@@ -394,7 +392,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const now = Date.now();
 
-    // Use cache if fresh
     if (now - lastCompletedFetch < CACHE_TIME && completedTasks.length > 0) {
       console.log("✅ Using cached completed tasks");
       set({ tasks: completedTasks, currentView: "completed" });
@@ -414,7 +411,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       pendingRequests.delete(requestKey);
       set({
         tasks: data.tasks,
-        completedTasks: data.tasks, // Save to separate cache
+        completedTasks: data.tasks,
         isLoading: false,
         lastCompletedFetch: now,
         currentView: "completed",
@@ -434,7 +431,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     }
   },
 
-  // OPTIMIZED: getUrgentTasks with separate cache
   getUrgentTasks: async (token: string) => {
     if (!token) {
       set({ error: "Please login to view tasks" });
@@ -444,7 +440,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const requestKey = "fetch-urgent-tasks";
     const { pendingRequests, lastUrgentFetch, urgentTasks } = get();
 
-    // Check if already pending
     if (pendingRequests.has(requestKey)) {
       console.log("⏸️ Urgent tasks request already pending, skipping...");
       return;
@@ -452,7 +447,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const now = Date.now();
 
-    // Use cache if fresh
     if (now - lastUrgentFetch < CACHE_TIME && urgentTasks.length > 0) {
       console.log("✅ Using cached urgent tasks");
       set({ tasks: urgentTasks, currentView: "urgent" });
@@ -472,7 +466,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       pendingRequests.delete(requestKey);
       set({
         tasks: data.tasks,
-        urgentTasks: data.tasks, // Save to separate cache
+        urgentTasks: data.tasks,
         isLoading: false,
         lastUrgentFetch: now,
         currentView: "urgent",
@@ -552,13 +546,11 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       throw new Error("Please login to update tasks");
     }
 
-    // OPTIMISTIC UPDATE: Update UI immediately
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
     const updateTaskInArray = (arr: Task[]) =>
       arr.map((t) => (t.id === id ? { ...t, ...taskData } : t));
 
-    // Update all caches immediately
     set({
       tasks: updateTaskInArray(tasks),
       allTasks: updateTaskInArray(allTasks),
@@ -566,7 +558,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       urgentTasks: updateTaskInArray(urgentTasks),
     });
 
-    // Then make API call in background
     try {
       const backendData: any = {};
       if (taskData.title !== undefined) backendData.title = taskData.title;
@@ -585,19 +576,16 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         body: JSON.stringify(backendData),
       });
 
-      // Clear cache timestamps to force fresh data on next view change
       set({
         lastFetch: 0,
         lastCompletedFetch: 0,
         lastUrgentFetch: 0,
       });
     } catch (error) {
-      // ROLLBACK on error: Refresh from server
       const message =
         error instanceof Error ? error.message : "Failed to update task";
       set({ error: message });
 
-      // Refresh current view to get correct data
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
@@ -616,12 +604,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       throw new Error("Please login to delete tasks");
     }
 
-    // OPTIMISTIC UPDATE: Remove from UI immediately
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
     const removeTaskFromArray = (arr: Task[]) => arr.filter((t) => t.id !== id);
 
-    // Update all caches immediately
     set({
       tasks: removeTaskFromArray(tasks),
       allTasks: removeTaskFromArray(allTasks),
@@ -629,25 +615,21 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       urgentTasks: removeTaskFromArray(urgentTasks),
     });
 
-    // Then make API call in background
     try {
       await fetchAPI(`${API_URL}/tasks/${id}`, token, {
         method: "DELETE",
       });
 
-      // Clear cache timestamps
       set({
         lastFetch: 0,
         lastCompletedFetch: 0,
         lastUrgentFetch: 0,
       });
     } catch (error) {
-      // ROLLBACK on error: Refresh from server
       const message =
         error instanceof Error ? error.message : "Failed to delete task";
       set({ error: message });
 
-      // Refresh current view to get correct data
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
@@ -666,13 +648,11 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       throw new Error("Please login to complete tasks");
     }
 
-    // OPTIMISTIC UPDATE: Mark as complete immediately
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
     const updateTaskInArray = (arr: Task[]) =>
       arr.map((t) => (t.id === id ? { ...t, completed: true } : t));
 
-    // Update all caches immediately
     set({
       tasks: updateTaskInArray(tasks),
       allTasks: updateTaskInArray(allTasks),
@@ -680,26 +660,22 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       urgentTasks: updateTaskInArray(urgentTasks),
     });
 
-    // Then make API call in background
     try {
       await fetchAPI(`${API_URL}/tasks/${id}`, token, {
         method: "PUT",
         body: JSON.stringify({ completed: true }),
       });
 
-      // Clear cache timestamps
       set({
         lastFetch: 0,
         lastCompletedFetch: 0,
         lastUrgentFetch: 0,
       });
     } catch (error) {
-      // ROLLBACK on error: Refresh from server
       const message =
         error instanceof Error ? error.message : "Failed to complete task";
       set({ error: message });
 
-      // Refresh current view to get correct data
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
