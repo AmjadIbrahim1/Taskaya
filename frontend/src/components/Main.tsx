@@ -1,4 +1,4 @@
-// src/components/Main.tsx - COMPLETE & OPTIMIZED
+// src/components/Main.tsx - UPDATED: Non-clickable urgent emoji
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
@@ -23,7 +23,7 @@ type OutletContext = {
   authMethod: "clerk" | "jwt" | null;
 };
 
-// Optimized TaskCard with memo and action buttons
+// Optimized TaskCard with memo and non-clickable emoji
 const TaskCard = memo(
   ({
     task,
@@ -149,10 +149,25 @@ const TaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
+                  {/* UPDATED: Non-clickable urgent emoji */}
                   {task.isUrgent && !task.completed && (
-                    <span className="text-lg animate-pulse">🔥</span>
+                    <span
+                      className="text-lg animate-pulse pointer-events-none select-none"
+                      aria-label="Urgent task"
+                      role="img"
+                    >
+                      🔥
+                    </span>
                   )}
-                  {task.completed && <span className="text-lg">✅</span>}
+                  {task.completed && (
+                    <span
+                      className="text-lg pointer-events-none select-none"
+                      aria-label="Completed task"
+                      role="img"
+                    >
+                      ✅
+                    </span>
+                  )}
                   <p
                     className={cn(
                       "text-foreground font-bold text-lg",
@@ -319,7 +334,7 @@ export function Main() {
       completedCount: completed,
       urgentTotal,
       urgentCompleted,
-      totalTasks: tasks.length, // This now includes completed!
+      totalTasks: tasks.length,
     };
   }, [tasks]);
 

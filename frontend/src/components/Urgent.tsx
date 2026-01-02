@@ -1,4 +1,4 @@
-// src/components/Urgent.tsx - OPTIMIZED with action buttons & cross-tab stats
+// src/components/Urgent.tsx - UPDATED: Non-clickable emoji
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
@@ -123,8 +123,23 @@ const UrgentTaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  <span className="text-2xl animate-pulse">🔥</span>
-                  {task.completed && <span className="text-xl">✅</span>}
+                  {/* UPDATED: Non-clickable urgent emoji */}
+                  <span
+                    className="text-2xl animate-pulse pointer-events-none select-none"
+                    aria-label="Urgent task"
+                    role="img"
+                  >
+                    🔥
+                  </span>
+                  {task.completed && (
+                    <span
+                      className="text-xl pointer-events-none select-none"
+                      aria-label="Completed task"
+                      role="img"
+                    >
+                      ✅
+                    </span>
+                  )}
                   <div className="flex-1">
                     <p
                       className={cn(
@@ -270,8 +285,6 @@ export function Urgent({
     const urgentCompleted = urgentTasks.filter((t) => t.completed).length;
     const urgentTotal = urgentTasks.length;
 
-    // These are estimates based on urgent tasks
-    // In a real app, you'd fetch all tasks to get accurate counts
     return {
       urgentActive,
       urgentCompleted,

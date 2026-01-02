@@ -1,4 +1,4 @@
-// src/components/Completed.tsx - OPTIMIZED with action buttons & cross-tab stats
+// src/components/Completed.tsx - UPDATED: Non-clickable emojis
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
@@ -114,8 +114,23 @@ const CompletedTaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  <span className="text-2xl">✅</span>
-                  {task.isUrgent && <span className="text-lg">🔥</span>}
+                  {/* UPDATED: Non-clickable emojis */}
+                  <span
+                    className="text-2xl pointer-events-none select-none"
+                    aria-label="Completed task"
+                    role="img"
+                  >
+                    ✅
+                  </span>
+                  {task.isUrgent && (
+                    <span
+                      className="text-lg pointer-events-none select-none"
+                      aria-label="Urgent task"
+                      role="img"
+                    >
+                      🔥
+                    </span>
+                  )}
                   <div className="flex-1">
                     <p className="text-muted-foreground font-black text-xl line-through">
                       {task.title}
