@@ -1,4 +1,4 @@
-// src/main.tsx - FIXED: Removed BrowserRouter wrapper
+// src/main.tsx - FIXED: No BrowserRouter (RouterProvider handles it)
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ClerkProvider } from "@clerk/clerk-react";
@@ -11,8 +11,8 @@ createRoot(document.getElementById("root")!).render(
       publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}
       afterSignInUrl="/"
       afterSignUpUrl="/"
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
+      signInUrl="/auth/login"
+      signUpUrl="/auth/register"
     >
       <App />
     </ClerkProvider>

@@ -1,6 +1,5 @@
-// src/App.tsx
+// src/App.tsx - FIXED: No useNavigate (RouterProvider handles navigation)
 import { useEffect } from "react";
-import { BrowserRouter } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { Loader2 } from "lucide-react";
 

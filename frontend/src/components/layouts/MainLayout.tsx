@@ -1,4 +1,4 @@
-// src/components/layouts/MainLayout.tsx - FIXED: Pass auth context properly
+// src/components/layouts/MainLayout.tsx - FIXED: Correct navigation paths
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Side } from "../Side";
@@ -17,8 +17,8 @@ export function MainLayout({ authMethod }: MainLayoutProps) {
 
   // Determine active view based on current route
   const getActiveView = (): "all" | "completed" | "urgent" => {
-    if (location.pathname === "/completed") return "completed";
-    if (location.pathname === "/urgent") return "urgent";
+    if (location.pathname === "/app/completed") return "completed";
+    if (location.pathname === "/app/urgent") return "urgent";
     return "all";
   };
 
@@ -38,13 +38,13 @@ export function MainLayout({ authMethod }: MainLayoutProps) {
 
     switch (view) {
       case "all":
-        navigate("/");
+        navigate("/app");
         break;
       case "completed":
-        navigate("/completed");
+        navigate("/app/completed");
         break;
       case "urgent":
-        navigate("/urgent");
+        navigate("/app/urgent");
         break;
     }
   };

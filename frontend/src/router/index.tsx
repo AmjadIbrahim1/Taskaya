@@ -1,4 +1,4 @@
-// src/router/index.tsx - FIXED: Auth method context
+// src/router/index.tsx - UPDATED: With Landing Page
 import {
   createBrowserRouter,
   RouterProvider,
@@ -6,6 +6,7 @@ import {
 } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore } from "@/store";
+import { LandingPage } from "@/pages/LandingPage";
 import { MainLayout } from "@/components/layouts/MainLayout";
 import { AuthMethodSelector } from "@/components/AuthMethodSelector";
 import { Login } from "@/components/Login";
@@ -28,40 +29,37 @@ function LoadingScreen() {
 }
 
 /* ----------------------------------
-   Auth Method Hook (SAFE)
+   Auth Method Hook
 -----------------------------------*/
 export function useAuthMethod(): "clerk" | "jwt" | null {
   const { isSignedIn, isLoaded } = useAuth();
   const { isAuthenticated, token } = useAuthStore();
 
-  console.log("🔍 useAuthMethod Debug:", {
-    clerkLoaded: isLoaded,
-    clerkSignedIn: isSignedIn,
-    jwtAuthenticated: isAuthenticated,
-    hasJWTToken: !!token,
-  });
-
-  if (!isLoaded) {
-    console.log("⏳ Clerk not loaded yet");
-    return null;
-  }
-
-  if (isSignedIn) {
-    console.log("✅ Auth Method: CLERK");
-    return "clerk";
-  }
-
-  if (isAuthenticated && token) {
-    console.log("✅ Auth Method: JWT");
-    return "jwt";
-  }
-
-  console.log("❌ No authentication found");
+  if (!isLoaded) return null;
+  if (isSignedIn) return "clerk";
+  if (isAuthenticated && token) return "jwt";
   return null;
 }
 
 /* ----------------------------------
-   Protected Route
+   Root Redirect Component
+-----------------------------------*/
+function RootRedirect() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { isAuthenticated } = useAuthStore();
+
+  if (!isLoaded) return <LoadingScreen />;
+
+  // Redirect based on auth status
+  if (isSignedIn || isAuthenticated) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return <Navigate to="/landing" replace />;
+}
+
+/* ----------------------------------
+   Protected Route (for App pages)
 -----------------------------------*/
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -69,15 +67,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isLoaded) return <LoadingScreen />;
 
+  // If not authenticated, redirect to landing page
   if (!isSignedIn && !isAuthenticated) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/landing" replace />;
   }
 
   return <>{children}</>;
 }
 
 /* ----------------------------------
-   Auth Route
+   Auth Route (for Login/Register pages)
 -----------------------------------*/
 function AuthRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -85,8 +84,9 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
 
   if (!isLoaded) return <LoadingScreen />;
 
+  // If already authenticated, redirect to app
   if (isSignedIn || isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   return <>{children}</>;
@@ -98,8 +98,6 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
 function ProtectedLayout() {
   const authMethod = useAuthMethod();
 
-  console.log("🔐 ProtectedLayout - Auth Method:", authMethod);
-
   return (
     <ProtectedRoute>
       <MainLayout authMethod={authMethod} />
@@ -108,11 +106,24 @@ function ProtectedLayout() {
 }
 
 /* ----------------------------------
-   Router
+   Router Configuration
 -----------------------------------*/
 export const router = createBrowserRouter([
+  // Root - Auto redirect
   {
     path: "/",
+    element: <RootRedirect />,
+  },
+
+  // Landing Page (Public)
+  {
+    path: "/landing",
+    element: <LandingPage />,
+  },
+
+  // App Routes (Protected)
+  {
+    path: "/app",
     element: <ProtectedLayout />,
     children: [
       { index: true, element: <Main /> },
@@ -120,6 +131,8 @@ export const router = createBrowserRouter([
       { path: "urgent", element: <Urgent /> },
     ],
   },
+
+  // Auth Routes (Public)
   {
     path: "/auth",
     element: (
@@ -137,7 +150,7 @@ export const router = createBrowserRouter([
       <AuthRoute>
         <Login
           onSwitchToRegister={() => (window.location.href = "/auth/register")}
-          onBack={() => (window.location.href = "/auth")}
+          onBack={() => (window.location.href = "/landing")}
         />
       </AuthRoute>
     ),
@@ -148,15 +161,19 @@ export const router = createBrowserRouter([
       <AuthRoute>
         <Register
           onSwitchToLogin={() => (window.location.href = "/auth/login")}
-          onBack={() => (window.location.href = "/auth")}
+          onBack={() => (window.location.href = "/landing")}
         />
       </AuthRoute>
     ),
   },
+
+  // SSO Callback
   {
     path: "/sso-callback",
     element: <SSOCallback />,
   },
+
+  // Catch-all: Redirect to root
   {
     path: "*",
     element: <Navigate to="/" replace />,
