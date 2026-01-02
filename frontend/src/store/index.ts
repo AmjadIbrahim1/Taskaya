@@ -1,0 +1,733 @@
+// src/store/index.ts - OPTIMIZED: Request deduplication + better caching
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+interface User {
+  id: number;
+  email: string;
+}
+
+export interface Task {
+  id: number;
+  userId: number;
+  title: string;
+  description: string | null;
+  status: string;
+  deadline: string | null;
+  isUrgent: boolean;
+  completed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AuthState {
+  user: User | null;
+  token: string | null;
+  refreshToken: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshAccessToken: () => Promise<boolean>;
+  clearError: () => void;
+  initializeAuth: () => void;
+}
+
+interface TaskState {
+  tasks: Task[];
+  allTasks: Task[];
+  completedTasks: Task[]; // NEW: Separate cache for completed
+  urgentTasks: Task[]; // NEW: Separate cache for urgent
+  isLoading: boolean;
+  error: string | null;
+  lastFetch: number;
+  lastCompletedFetch: number; // NEW
+  lastUrgentFetch: number; // NEW
+  searchQuery: string;
+  currentView: "all" | "completed" | "urgent";
+
+  // Track pending requests to prevent duplicates
+  pendingRequests: Set<string>;
+
+  fetchTasks: (token: string, force?: boolean) => Promise<void>;
+  addTask: (
+    token: string,
+    title: string,
+    description?: string,
+    deadline?: string,
+    isUrgent?: boolean
+  ) => Promise<void>;
+  updateTask: (token: string, id: number, data: Partial<Task>) => Promise<void>;
+  deleteTask: (token: string, id: number) => Promise<void>;
+  completeTask: (token: string, id: number) => Promise<void>;
+  filterTasks: (query: string) => void;
+  setViewTasks: (view: "all" | "completed" | "urgent") => void;
+  setCurrentView: (view: "all" | "completed" | "urgent") => void;
+  clearError: () => void;
+  resetTasks: () => void;
+  getCompletedTasks: (token: string) => Promise<void>;
+  getUrgentTasks: (token: string) => Promise<void>;
+}
+
+const API_URL = "http://localhost:5000/api";
+const CACHE_TIME = 5000; // 5 seconds - shorter for better UX
+
+const fetchAPI = async (
+  url: string,
+  token: string,
+  options: RequestInit = {}
+) => {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || `Request failed: ${response.status}`);
+  }
+
+  return data;
+};
+
+const fetchAPINoAuth = async (url: string, options: RequestInit = {}) => {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || `Request failed: ${response.status}`);
+  }
+
+  return data;
+};
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      token: null,
+      refreshToken: null,
+      isAuthenticated: false,
+      isLoading: false,
+      error: null,
+
+      initializeAuth: () => {
+        const { token, user } = get();
+        if (token && user) {
+          set({ isAuthenticated: true });
+        } else {
+          set({ isAuthenticated: false });
+        }
+      },
+
+      login: async (email: string, password: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await fetchAPINoAuth(`${API_URL}/auth/login`, {
+            method: "POST",
+            body: JSON.stringify({ email, password }),
+          });
+
+          set({
+            user: data.user,
+            token: data.accessToken,
+            refreshToken: data.refreshToken,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Login failed";
+          set({ error: message, isLoading: false });
+          throw error;
+        }
+      },
+
+      register: async (email: string, password: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const data = await fetchAPINoAuth(`${API_URL}/auth/register`, {
+            method: "POST",
+            body: JSON.stringify({ email, password }),
+          });
+
+          set({
+            user: data.user,
+            token: data.accessToken,
+            refreshToken: data.refreshToken,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Registration failed";
+          set({ error: message, isLoading: false });
+          throw error;
+        }
+      },
+
+      refreshAccessToken: async () => {
+        const { refreshToken } = get();
+
+        if (!refreshToken) {
+          set({
+            user: null,
+            token: null,
+            refreshToken: null,
+            isAuthenticated: false,
+          });
+          return false;
+        }
+
+        try {
+          const data = await fetchAPINoAuth(`${API_URL}/auth/refresh`, {
+            method: "POST",
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          set({
+            token: data.accessToken,
+            refreshToken: data.refreshToken,
+            isAuthenticated: true,
+          });
+
+          return true;
+        } catch (error) {
+          set({
+            user: null,
+            token: null,
+            refreshToken: null,
+            isAuthenticated: false,
+            error: "Session expired. Please login again.",
+          });
+
+          return false;
+        }
+      },
+
+      logout: async () => {
+        const { refreshToken } = get();
+
+        if (refreshToken) {
+          try {
+            await fetchAPINoAuth(`${API_URL}/auth/logout`, {
+              method: "POST",
+              body: JSON.stringify({ refreshToken }),
+            });
+          } catch (error) {
+            console.error("Logout request failed:", error);
+          }
+        }
+
+        set({
+          user: null,
+          token: null,
+          refreshToken: null,
+          isAuthenticated: false,
+          error: null,
+        });
+
+        useTaskStore.getState().resetTasks();
+      },
+
+      clearError: () => set({ error: null }),
+    }),
+    {
+      name: "auth-storage",
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        refreshToken: state.refreshToken,
+      }),
+    }
+  )
+);
+
+export const useTaskStore = create<TaskState>()((set, get) => ({
+  tasks: [],
+  allTasks: [],
+  completedTasks: [],
+  urgentTasks: [],
+  isLoading: false,
+  error: null,
+  lastFetch: 0,
+  lastCompletedFetch: 0,
+  lastUrgentFetch: 0,
+  searchQuery: "",
+  currentView: "all",
+  pendingRequests: new Set(),
+
+  setCurrentView: (view) => {
+    set({ currentView: view });
+    get().setViewTasks(view);
+  },
+
+  setViewTasks: (view: "all" | "completed" | "urgent") => {
+    const { allTasks, completedTasks, urgentTasks } = get();
+    let filtered: Task[];
+
+    switch (view) {
+      case "completed":
+        filtered = completedTasks;
+        break;
+      case "urgent":
+        filtered = urgentTasks;
+        break;
+      case "all":
+      default:
+        filtered = allTasks;
+        break;
+    }
+
+    set({ tasks: filtered, currentView: view });
+  },
+
+  // OPTIMIZED: fetchTasks - Combines all tasks from all endpoints
+  fetchTasks: async (token: string, force = false) => {
+    if (!token) {
+      set({ error: "Please login to view tasks" });
+      return;
+    }
+
+    const requestKey = "fetch-all-tasks";
+    const { pendingRequests, lastFetch, allTasks } = get();
+
+    // Check if request is already pending
+    if (pendingRequests.has(requestKey)) {
+      console.log("⏸️ Request already pending, skipping...");
+      return;
+    }
+
+    const now = Date.now();
+
+    // Use cache if not forced and cache is fresh
+    if (!force && now - lastFetch < CACHE_TIME && allTasks.length > 0) {
+      console.log("✅ Using cached all tasks");
+      return;
+    }
+
+    // Mark request as pending
+    pendingRequests.add(requestKey);
+    set({
+      isLoading: true,
+      error: null,
+      pendingRequests: new Set(pendingRequests),
+    });
+
+    try {
+      // Fetch from all 3 endpoints in parallel
+      const [pendingData, completedData, urgentData] = await Promise.all([
+        fetchAPI(`${API_URL}/tasks`, token),
+        fetchAPI(`${API_URL}/tasks/completed`, token),
+        fetchAPI(`${API_URL}/tasks/urgent`, token),
+      ]);
+
+      // Combine all tasks and remove duplicates
+      const allTasksMap = new Map<number, Task>();
+
+      [
+        ...pendingData.tasks,
+        ...completedData.tasks,
+        ...urgentData.tasks,
+      ].forEach((task) => {
+        allTasksMap.set(task.id, task);
+      });
+
+      const combinedTasks = Array.from(allTasksMap.values());
+
+      console.log(`✅ Combined all tasks: ${combinedTasks.length} total`);
+
+      pendingRequests.delete(requestKey);
+      set({
+        tasks: combinedTasks,
+        allTasks: combinedTasks,
+        isLoading: false,
+        lastFetch: now,
+        searchQuery: "",
+        pendingRequests: new Set(pendingRequests),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch tasks";
+      pendingRequests.delete(requestKey);
+      set({
+        error: message,
+        isLoading: false,
+        pendingRequests: new Set(pendingRequests),
+      });
+    }
+  },
+
+  // OPTIMIZED: getCompletedTasks with separate cache
+  getCompletedTasks: async (token: string) => {
+    if (!token) {
+      set({ error: "Please login to view tasks" });
+      return;
+    }
+
+    const requestKey = "fetch-completed-tasks";
+    const { pendingRequests, lastCompletedFetch, completedTasks } = get();
+
+    // Check if already pending
+    if (pendingRequests.has(requestKey)) {
+      console.log("⏸️ Completed tasks request already pending, skipping...");
+      return;
+    }
+
+    const now = Date.now();
+
+    // Use cache if fresh
+    if (now - lastCompletedFetch < CACHE_TIME && completedTasks.length > 0) {
+      console.log("✅ Using cached completed tasks");
+      set({ tasks: completedTasks, currentView: "completed" });
+      return;
+    }
+
+    pendingRequests.add(requestKey);
+    set({
+      isLoading: true,
+      error: null,
+      pendingRequests: new Set(pendingRequests),
+    });
+
+    try {
+      const data = await fetchAPI(`${API_URL}/tasks/completed`, token);
+
+      pendingRequests.delete(requestKey);
+      set({
+        tasks: data.tasks,
+        completedTasks: data.tasks, // Save to separate cache
+        isLoading: false,
+        lastCompletedFetch: now,
+        currentView: "completed",
+        pendingRequests: new Set(pendingRequests),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch completed tasks";
+      pendingRequests.delete(requestKey);
+      set({
+        error: message,
+        isLoading: false,
+        pendingRequests: new Set(pendingRequests),
+      });
+    }
+  },
+
+  // OPTIMIZED: getUrgentTasks with separate cache
+  getUrgentTasks: async (token: string) => {
+    if (!token) {
+      set({ error: "Please login to view tasks" });
+      return;
+    }
+
+    const requestKey = "fetch-urgent-tasks";
+    const { pendingRequests, lastUrgentFetch, urgentTasks } = get();
+
+    // Check if already pending
+    if (pendingRequests.has(requestKey)) {
+      console.log("⏸️ Urgent tasks request already pending, skipping...");
+      return;
+    }
+
+    const now = Date.now();
+
+    // Use cache if fresh
+    if (now - lastUrgentFetch < CACHE_TIME && urgentTasks.length > 0) {
+      console.log("✅ Using cached urgent tasks");
+      set({ tasks: urgentTasks, currentView: "urgent" });
+      return;
+    }
+
+    pendingRequests.add(requestKey);
+    set({
+      isLoading: true,
+      error: null,
+      pendingRequests: new Set(pendingRequests),
+    });
+
+    try {
+      const data = await fetchAPI(`${API_URL}/tasks/urgent`, token);
+
+      pendingRequests.delete(requestKey);
+      set({
+        tasks: data.tasks,
+        urgentTasks: data.tasks, // Save to separate cache
+        isLoading: false,
+        lastUrgentFetch: now,
+        currentView: "urgent",
+        pendingRequests: new Set(pendingRequests),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch urgent tasks";
+      pendingRequests.delete(requestKey);
+      set({
+        error: message,
+        isLoading: false,
+        pendingRequests: new Set(pendingRequests),
+      });
+    }
+  },
+
+  filterTasks: (query: string) => {
+    const { allTasks } = get();
+
+    if (!query.trim()) {
+      set({ tasks: allTasks, searchQuery: "" });
+      return;
+    }
+
+    const trimmedQuery = query.trim().toLowerCase();
+    const filtered = allTasks.filter((task) => {
+      const titleMatch = task.title.toLowerCase().includes(trimmedQuery);
+      const descriptionMatch = task.description
+        ?.toLowerCase()
+        .includes(trimmedQuery);
+      return titleMatch || descriptionMatch;
+    });
+
+    set({ tasks: filtered, searchQuery: query });
+  },
+
+  addTask: async (token, title, description, deadline, isUrgent) => {
+    if (!token) {
+      set({ error: "Please login to add tasks" });
+      throw new Error("Please login to add tasks");
+    }
+
+    if (!title || !title.trim()) {
+      set({ error: "Task title is required" });
+      throw new Error("Task title is required");
+    }
+
+    set({ isLoading: true, error: null });
+    try {
+      await fetchAPI(`${API_URL}/tasks`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description?.trim() || undefined,
+          deadline,
+          is_urgent: isUrgent || false,
+        }),
+      });
+
+      await get().fetchTasks(token, true);
+      const { currentView } = get();
+      get().setViewTasks(currentView);
+
+      set({ isLoading: false });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to add task";
+      set({ error: message, isLoading: false });
+      throw error;
+    }
+  },
+
+  updateTask: async (token, id, taskData) => {
+    if (!token) {
+      set({ error: "Please login to update tasks" });
+      throw new Error("Please login to update tasks");
+    }
+
+    // OPTIMISTIC UPDATE: Update UI immediately
+    const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
+
+    const updateTaskInArray = (arr: Task[]) =>
+      arr.map((t) => (t.id === id ? { ...t, ...taskData } : t));
+
+    // Update all caches immediately
+    set({
+      tasks: updateTaskInArray(tasks),
+      allTasks: updateTaskInArray(allTasks),
+      completedTasks: updateTaskInArray(completedTasks),
+      urgentTasks: updateTaskInArray(urgentTasks),
+    });
+
+    // Then make API call in background
+    try {
+      const backendData: any = {};
+      if (taskData.title !== undefined) backendData.title = taskData.title;
+      if (taskData.description !== undefined)
+        backendData.description = taskData.description;
+      if (taskData.deadline !== undefined)
+        backendData.deadline = taskData.deadline;
+      if (taskData.isUrgent !== undefined)
+        backendData.is_urgent = taskData.isUrgent;
+      if (taskData.completed !== undefined)
+        backendData.completed = taskData.completed;
+      if (taskData.status !== undefined) backendData.status = taskData.status;
+
+      await fetchAPI(`${API_URL}/tasks/${id}`, token, {
+        method: "PUT",
+        body: JSON.stringify(backendData),
+      });
+
+      // Clear cache timestamps to force fresh data on next view change
+      set({
+        lastFetch: 0,
+        lastCompletedFetch: 0,
+        lastUrgentFetch: 0,
+      });
+    } catch (error) {
+      // ROLLBACK on error: Refresh from server
+      const message =
+        error instanceof Error ? error.message : "Failed to update task";
+      set({ error: message });
+
+      // Refresh current view to get correct data
+      if (currentView === "completed") {
+        await get().getCompletedTasks(token);
+      } else if (currentView === "urgent") {
+        await get().getUrgentTasks(token);
+      } else {
+        await get().fetchTasks(token, true);
+      }
+
+      throw error;
+    }
+  },
+
+  deleteTask: async (token, id) => {
+    if (!token) {
+      set({ error: "Please login to delete tasks" });
+      throw new Error("Please login to delete tasks");
+    }
+
+    // OPTIMISTIC UPDATE: Remove from UI immediately
+    const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
+
+    const removeTaskFromArray = (arr: Task[]) => arr.filter((t) => t.id !== id);
+
+    // Update all caches immediately
+    set({
+      tasks: removeTaskFromArray(tasks),
+      allTasks: removeTaskFromArray(allTasks),
+      completedTasks: removeTaskFromArray(completedTasks),
+      urgentTasks: removeTaskFromArray(urgentTasks),
+    });
+
+    // Then make API call in background
+    try {
+      await fetchAPI(`${API_URL}/tasks/${id}`, token, {
+        method: "DELETE",
+      });
+
+      // Clear cache timestamps
+      set({
+        lastFetch: 0,
+        lastCompletedFetch: 0,
+        lastUrgentFetch: 0,
+      });
+    } catch (error) {
+      // ROLLBACK on error: Refresh from server
+      const message =
+        error instanceof Error ? error.message : "Failed to delete task";
+      set({ error: message });
+
+      // Refresh current view to get correct data
+      if (currentView === "completed") {
+        await get().getCompletedTasks(token);
+      } else if (currentView === "urgent") {
+        await get().getUrgentTasks(token);
+      } else {
+        await get().fetchTasks(token, true);
+      }
+
+      throw error;
+    }
+  },
+
+  completeTask: async (token, id) => {
+    if (!token) {
+      set({ error: "Please login to complete tasks" });
+      throw new Error("Please login to complete tasks");
+    }
+
+    // OPTIMISTIC UPDATE: Mark as complete immediately
+    const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
+
+    const updateTaskInArray = (arr: Task[]) =>
+      arr.map((t) => (t.id === id ? { ...t, completed: true } : t));
+
+    // Update all caches immediately
+    set({
+      tasks: updateTaskInArray(tasks),
+      allTasks: updateTaskInArray(allTasks),
+      completedTasks: updateTaskInArray(completedTasks),
+      urgentTasks: updateTaskInArray(urgentTasks),
+    });
+
+    // Then make API call in background
+    try {
+      await fetchAPI(`${API_URL}/tasks/${id}`, token, {
+        method: "PUT",
+        body: JSON.stringify({ completed: true }),
+      });
+
+      // Clear cache timestamps
+      set({
+        lastFetch: 0,
+        lastCompletedFetch: 0,
+        lastUrgentFetch: 0,
+      });
+    } catch (error) {
+      // ROLLBACK on error: Refresh from server
+      const message =
+        error instanceof Error ? error.message : "Failed to complete task";
+      set({ error: message });
+
+      // Refresh current view to get correct data
+      if (currentView === "completed") {
+        await get().getCompletedTasks(token);
+      } else if (currentView === "urgent") {
+        await get().getUrgentTasks(token);
+      } else {
+        await get().fetchTasks(token, true);
+      }
+
+      throw error;
+    }
+  },
+
+  clearError: () => set({ error: null }),
+
+  resetTasks: () => {
+    set({
+      tasks: [],
+      allTasks: [],
+      completedTasks: [],
+      urgentTasks: [],
+      isLoading: false,
+      error: null,
+      lastFetch: 0,
+      lastCompletedFetch: 0,
+      lastUrgentFetch: 0,
+      searchQuery: "",
+      currentView: "all",
+      pendingRequests: new Set(),
+    });
+  },
+}));
