@@ -1,6 +1,7 @@
-// src/store/index.ts - OPTIMIZED: Lazy task loading after auth
+// src/store/index.ts - ENHANCED with toast notifications
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { toast } from "@/lib/toast";
 
 interface User {
   id: number;
@@ -72,7 +73,7 @@ interface TaskState {
 }
 
 const API_URL = "http://localhost:5000/api";
-const CACHE_TIME = 5000; // 5 seconds
+const CACHE_TIME = 5000;
 
 const fetchAPI = async (
   url: string,
@@ -134,7 +135,6 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // OPTIMIZED: Faster login without unnecessary operations
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
@@ -143,7 +143,6 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({ email, password }),
           });
 
-          // Set auth state immediately
           set({
             user: data.user,
             token: data.accessToken,
@@ -153,16 +152,16 @@ export const useAuthStore = create<AuthState>()(
             error: null,
           });
 
-          // Note: Tasks will be loaded lazily by components, not here
+          toast.success(`Welcome back, ${data.user.email}! 👋`);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Login failed";
           set({ error: message, isLoading: false });
+          toast.error(message);
           throw error;
         }
       },
 
-      // OPTIMIZED: Faster register without unnecessary operations
       register: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
@@ -171,7 +170,6 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({ email, password }),
           });
 
-          // Set auth state immediately
           set({
             user: data.user,
             token: data.accessToken,
@@ -181,11 +179,12 @@ export const useAuthStore = create<AuthState>()(
             error: null,
           });
 
-          // Note: Tasks will be loaded lazily by components, not here
+          toast.success(`Account created successfully! Welcome! 🎉`);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Registration failed";
           set({ error: message, isLoading: false });
+          toast.error(message);
           throw error;
         }
       },
@@ -224,7 +223,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             error: "Session expired. Please login again.",
           });
-
+          toast.warning("Session expired. Please login again.");
           return false;
         }
       },
@@ -252,6 +251,7 @@ export const useAuthStore = create<AuthState>()(
         });
 
         useTaskStore.getState().resetTasks();
+        toast.info("Logged out successfully. See you soon! 👋");
       },
 
       clearError: () => set({ error: null }),
@@ -316,14 +316,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const { pendingRequests, lastFetch, allTasks } = get();
 
     if (pendingRequests.has(requestKey)) {
-      console.log("⏸️ Request already pending, skipping...");
       return;
     }
 
     const now = Date.now();
 
     if (!force && now - lastFetch < CACHE_TIME && allTasks.length > 0) {
-      console.log("✅ Using cached all tasks");
       return;
     }
 
@@ -353,8 +351,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
       const combinedTasks = Array.from(allTasksMap.values());
 
-      console.log(`✅ Combined all tasks: ${combinedTasks.length} total`);
-
       pendingRequests.delete(requestKey);
       set({
         tasks: combinedTasks,
@@ -373,6 +369,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         isLoading: false,
         pendingRequests: new Set(pendingRequests),
       });
+      toast.error(message);
     }
   },
 
@@ -386,14 +383,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const { pendingRequests, lastCompletedFetch, completedTasks } = get();
 
     if (pendingRequests.has(requestKey)) {
-      console.log("⏸️ Completed tasks request already pending, skipping...");
       return;
     }
 
     const now = Date.now();
 
     if (now - lastCompletedFetch < CACHE_TIME && completedTasks.length > 0) {
-      console.log("✅ Using cached completed tasks");
       set({ tasks: completedTasks, currentView: "completed" });
       return;
     }
@@ -428,6 +423,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         isLoading: false,
         pendingRequests: new Set(pendingRequests),
       });
+      toast.error(message);
     }
   },
 
@@ -441,14 +437,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const { pendingRequests, lastUrgentFetch, urgentTasks } = get();
 
     if (pendingRequests.has(requestKey)) {
-      console.log("⏸️ Urgent tasks request already pending, skipping...");
       return;
     }
 
     const now = Date.now();
 
     if (now - lastUrgentFetch < CACHE_TIME && urgentTasks.length > 0) {
-      console.log("✅ Using cached urgent tasks");
       set({ tasks: urgentTasks, currentView: "urgent" });
       return;
     }
@@ -481,6 +475,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         isLoading: false,
         pendingRequests: new Set(pendingRequests),
       });
+      toast.error(message);
     }
   },
 
@@ -532,10 +527,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       get().setViewTasks(currentView);
 
       set({ isLoading: false });
+      toast.success("Task added successfully! ✅");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to add task";
       set({ error: message, isLoading: false });
+      toast.error(message);
       throw error;
     }
   },
@@ -548,6 +545,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
+    // Optimistic update
     const updateTaskInArray = (arr: Task[]) =>
       arr.map((t) => (t.id === id ? { ...t, ...taskData } : t));
 
@@ -581,11 +579,15 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         lastCompletedFetch: 0,
         lastUrgentFetch: 0,
       });
+
+      toast.success("Task updated successfully! ✨");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to update task";
       set({ error: message });
+      toast.error(message);
 
+      // Revert on error
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
@@ -606,6 +608,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
+    // Optimistic delete
     const removeTaskFromArray = (arr: Task[]) => arr.filter((t) => t.id !== id);
 
     set({
@@ -625,11 +628,15 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         lastCompletedFetch: 0,
         lastUrgentFetch: 0,
       });
+
+      toast.success("Task deleted successfully! 🗑️");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to delete task";
       set({ error: message });
+      toast.error(message);
 
+      // Revert on error
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
@@ -650,6 +657,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
+    // Optimistic update
     const updateTaskInArray = (arr: Task[]) =>
       arr.map((t) => (t.id === id ? { ...t, completed: true } : t));
 
@@ -671,11 +679,15 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         lastCompletedFetch: 0,
         lastUrgentFetch: 0,
       });
+
+      toast.success("Task completed! Great job! 🎉");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to complete task";
       set({ error: message });
+      toast.error(message);
 
+      // Revert on error
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {

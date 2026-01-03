@@ -1,4 +1,4 @@
-// src/App.tsx - FIXED: No useNavigate (RouterProvider handles navigation)
+// src/App.tsx - ENHANCED with ToastContainer
 import { useEffect } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { Loader2 } from "lucide-react";
@@ -7,17 +7,16 @@ import { useAuthStore } from "./store";
 import { AppRouter } from "./router";
 import { ThemeProvider } from "./components/theme-provider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ToastContainer } from "./components/Toast";
 
 function App() {
   const { isLoaded: clerkLoaded } = useAuth();
   const { initializeAuth } = useAuthStore();
 
-  // Initialize JWT auth on mount
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
 
-  // Show loading screen while Clerk initializes
   if (!clerkLoaded) {
     return (
       <ThemeProvider defaultTheme="system" storageKey="taskaya-theme">
@@ -39,6 +38,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="system" storageKey="taskaya-theme">
+        <ToastContainer />
         <AppRouter />
       </ThemeProvider>
     </ErrorBoundary>

@@ -1,21 +1,31 @@
-// src/components/layouts/MainLayout.tsx - FIXED: Correct navigation paths
+// src/components/layouts/MainLayout.tsx - ENHANCED with breadcrumbs & page title
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Side } from "../Side";
 import { AddTask } from "../AddTask";
 import { Search } from "../Search";
+import { Breadcrumbs } from "../Breadcrumbs";
 
 interface MainLayoutProps {
   authMethod: "clerk" | "jwt" | null;
 }
 
+const pageTitles: Record<string, string> = {
+  "/app": "All Tasks",
+  "/app/completed": "Completed Tasks",
+  "/app/urgent": "Urgent Tasks",
+};
+
 export function MainLayout({ authMethod }: MainLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  console.log("🏠 MainLayout - Auth Method:", authMethod);
+  // Update page title
+  useEffect(() => {
+    const title = pageTitles[location.pathname] || "Taskaya";
+    document.title = `${title} | Taskaya`;
+  }, [location.pathname]);
 
-  // Determine active view based on current route
   const getActiveView = (): "all" | "completed" | "urgent" => {
     if (location.pathname === "/app/completed") return "completed";
     if (location.pathname === "/app/urgent") return "urgent";
@@ -26,14 +36,11 @@ export function MainLayout({ authMethod }: MainLayoutProps) {
     getActiveView()
   );
 
-  // Update active view when location changes
   useEffect(() => {
     setActiveView(getActiveView());
   }, [location.pathname]);
 
-  // Handle view change with navigation
   const handleViewChange = (view: "all" | "completed" | "urgent") => {
-    console.log("📍 View changing to:", view);
     setActiveView(view);
 
     switch (view) {
@@ -51,18 +58,12 @@ export function MainLayout({ authMethod }: MainLayoutProps) {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Sidebar */}
       <Side activeView={activeView} onViewChange={handleViewChange} />
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-0 pt-16 lg:pt-0">
-        {/* Search Section */}
+        <Breadcrumbs />
         <Search authMethod={authMethod} />
-
-        {/* Add Task Section */}
         <AddTask authMethod={authMethod} />
-
-        {/* Content Area - Outlet for nested routes with context */}
         <Outlet context={{ authMethod }} />
       </div>
     </div>

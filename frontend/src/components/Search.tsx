@@ -1,8 +1,8 @@
-// src/components/Search.tsx
-import { useState, useEffect, useCallback, memo } from "react";
+// src/components/Search.tsx - ENHANCED with debounce
+import { useState, useEffect, useCallback, memo, useRef } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { Search as SearchIcon, X, Sparkles } from "lucide-react";
+import { Search as SearchIcon, X, Sparkles, Loader2 } from "lucide-react";
 
 interface SearchProps {
   authMethod: "clerk" | "jwt" | null;
@@ -12,9 +12,10 @@ export const Search = memo(({ authMethod }: SearchProps) => {
   const { getToken } = useAuth();
   const { token: jwtToken } = useAuthStore();
   const [query, setQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const { tasks, allTasks, filterTasks, fetchTasks } = useTaskStore();
+  const debounceTimer = useRef<NodeJS.Timeout>();
 
-  // Load all tasks when component mounts
   useEffect(() => {
     const loadAllTasks = async () => {
       let token: string | null = null;
@@ -33,22 +34,47 @@ export const Search = memo(({ authMethod }: SearchProps) => {
     loadAllTasks();
   }, [fetchTasks, getToken, authMethod, jwtToken]);
 
-  // Filter tasks when query changes
-  useEffect(() => {
-    filterTasks(query);
-  }, [query, filterTasks]);
+  const debouncedFilter = useCallback(
+    (value: string) => {
+      setIsSearching(true);
+
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+
+      debounceTimer.current = setTimeout(() => {
+        filterTasks(value);
+        setIsSearching(false);
+      }, 300);
+    },
+    [filterTasks]
+  );
 
   const handleClear = useCallback(() => {
     setQuery("");
-    filterTasks(""); // This will show all tasks
+    filterTasks("");
+    setIsSearching(false);
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
   }, [filterTasks]);
 
   const handleQueryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setQuery(e.target.value);
+      const value = e.target.value;
+      setQuery(value);
+      debouncedFilter(value);
     },
-    []
+    [debouncedFilter]
   );
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="p-6 border-b bg-gradient-to-br from-card/50 to-primary/5 backdrop-blur-sm">
@@ -64,7 +90,10 @@ export const Search = memo(({ authMethod }: SearchProps) => {
             placeholder="🔍 Search tasks... (instant results)"
             className="w-full pl-24 pr-14 py-4 rounded-2xl bg-background border-2 border-input focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all duration-200 placeholder:text-muted-foreground font-bold text-lg shadow-lg"
           />
-          {query && (
+          {isSearching && (
+            <Loader2 className="absolute right-14 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-primary z-10" />
+          )}
+          {query && !isSearching && (
             <button
               type="button"
               onClick={handleClear}
@@ -75,8 +104,7 @@ export const Search = memo(({ authMethod }: SearchProps) => {
           )}
         </div>
 
-        {/* Search Results Counter */}
-        {query && (
+        {query && !isSearching && (
           <div className="mt-3 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/30">
               <span className="text-sm font-black text-primary">
