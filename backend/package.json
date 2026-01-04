@@ -41,7 +41,8 @@
     "express": "^4.22.1",
     "express-validator": "^7.3.1",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "svix": "^1.40.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",

@@ -1,4 +1,4 @@
-// backend/src/controllers/auth.controller.ts
+// backend/src/controllers/auth.controller.ts - FIXED: HS256 Algorithm
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -8,18 +8,28 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "your-refresh-secret-key";
 const SALT_ROUNDS = 10;
 
-// Generate Access Token (15 minutes)
+// ✅ FIXED: Generate Access Token (15 minutes) with explicit HS256
 const generateAccessToken = (userId: number, email: string): string => {
-  return jwt.sign({ id: userId, email }, JWT_SECRET, {
-    expiresIn: "15m",
-  });
+  return jwt.sign(
+    { id: userId, email }, 
+    JWT_SECRET, 
+    {
+      algorithm: 'HS256',  // ✅ Explicit algorithm
+      expiresIn: "15m",
+    }
+  );
 };
 
-// Generate Refresh Token (30 days)
+// ✅ FIXED: Generate Refresh Token (30 days) with explicit HS256
 const generateRefreshToken = (userId: number, email: string): string => {
-  return jwt.sign({ id: userId, email }, JWT_REFRESH_SECRET, {
-    expiresIn: "30d",
-  });
+  return jwt.sign(
+    { id: userId, email }, 
+    JWT_REFRESH_SECRET, 
+    {
+      algorithm: 'HS256',  // ✅ Explicit algorithm
+      expiresIn: "30d",
+    }
+  );
 };
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -77,9 +87,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     console.log("✅ JWT User created successfully:", user.email);
 
-    // Generate tokens
+    // Generate tokens with HS256
     const accessToken = generateAccessToken(user.id, user.email);
     const refreshToken = generateRefreshToken(user.id, user.email);
+
+    console.log("🔑 Generated tokens with HS256 algorithm");
 
     // Store refresh token in database
     await prisma.refreshToken.create({
@@ -150,9 +162,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     console.log("✅ JWT Login successful!");
 
-    // Generate tokens
+    // Generate tokens with HS256
     const accessToken = generateAccessToken(user.id, user.email);
     const refreshToken = generateRefreshToken(user.id, user.email);
+
+    console.log("🔑 Generated tokens with HS256 algorithm");
 
     // Store refresh token in database
     await prisma.refreshToken.create({
@@ -193,10 +207,12 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Verify refresh token
+    // Verify refresh token with HS256
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as {
+      decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET, {
+        algorithms: ['HS256']  // ✅ Explicit algorithm
+      }) as {
         id: number;
         email: string;
       };
@@ -222,10 +238,10 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Generate new access token
+    // Generate new access token with HS256
     const newAccessToken = generateAccessToken(decoded.id, decoded.email);
 
-    // Generate new refresh token (rotation)
+    // Generate new refresh token (rotation) with HS256
     const newRefreshToken = generateRefreshToken(decoded.id, decoded.email);
 
     // Revoke old refresh token

@@ -1,4 +1,4 @@
-// src/middleware/validation.middleware.ts - FIXED
+// backend/src/middleware/validation.middleware.ts - FIXED
 import { body, param, query, validationResult } from "express-validator";
 import { Request, Response, NextFunction } from "express";
 
@@ -10,6 +10,7 @@ export const handleValidationErrors = (
 ): void => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.error("❌ Validation Errors:", errors.array());
     res.status(400).json({
       error: "Validation failed",
       details: errors.array().map((err) => ({
@@ -22,7 +23,10 @@ export const handleValidationErrors = (
   next();
 };
 
-// Auth Validators - FIXED: Removed Gmail-only restriction
+// ============================================
+// AUTH VALIDATORS (JWT LEGACY) - FIXED
+// ============================================
+
 export const registerValidator = [
   body("email")
     .trim()
@@ -36,9 +40,10 @@ export const registerValidator = [
     .notEmpty()
     .withMessage("Password is required")
     .isLength({ min: 6, max: 100 })
-    .withMessage("Password must be between 6 and 100 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage("Password must contain uppercase, lowercase, and number"),
+    .withMessage("Password must be between 6 and 100 characters"),
+  // ❌ REMOVED: Complex password requirements
+  // .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+  // .withMessage("Password must contain uppercase, lowercase, and number"),
   handleValidationErrors,
 ];
 
@@ -70,7 +75,10 @@ export const logoutValidator = [
   handleValidationErrors,
 ];
 
-// Task Validators
+// ============================================
+// TASK VALIDATORS
+// ============================================
+
 export const createTaskValidator = [
   body("title")
     .trim()
