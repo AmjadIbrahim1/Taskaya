@@ -1,0 +1,81 @@
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: taskaya-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: taskaya_db
+      POSTGRES_USER: taskaya_user
+      POSTGRES_PASSWORD: taskaya_secure_password_change_this
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - taskaya-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskaya_user -d taskaya_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: taskaya-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://taskaya_user:taskaya_secure_password_change_this@postgres:5432/taskaya_db
+      JWT_SECRET: your-super-secret-jwt-key-CHANGE-THIS-IN-PRODUCTION
+      JWT_REFRESH_SECRET: your-super-secret-refresh-key-CHANGE-THIS-IN-PRODUCTION
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - taskaya-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5000
+    container_name: taskaya-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - taskaya-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  taskaya-network:
+    driver: bridge

@@ -1,8 +1,6 @@
-// src/components/Main.tsx - FIXED: Removed auto-navigation on urgent toggle
+// src/components/Main.tsx
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext } from "react-router-dom"; // ✅ REMOVED useNavigate
 import type { Task } from "@/store";
 import {
   CheckCircle2,
@@ -19,11 +17,6 @@ import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CustomDatePicker } from "./CustomDatePicker";
 
-type OutletContext = {
-  authMethod: "clerk" | "jwt" | null;
-};
-
-// Optimized TaskCard with memo and editable inputs
 const TaskCard = memo(
   ({
     task,
@@ -309,12 +302,7 @@ const TaskCard = memo(
 TaskCard.displayName = "TaskCard";
 
 export function Main() {
-  // ❌ REMOVED: const navigate = useNavigate();
-  const { getToken } = useAuth();
-  const { token: jwtToken } = useAuthStore();
-  const context = useOutletContext<OutletContext>();
-  const authMethod = context?.authMethod || null;
-
+  const { token } = useAuthStore();
   const { tasks, fetchTasks, updateTask, deleteTask, isLoading } =
     useTaskStore();
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -325,19 +313,10 @@ export function Main() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   useEffect(() => {
-    const loadTasks = async () => {
-      let token: string | null = null;
-      if (authMethod === "clerk") {
-        token = await getToken();
-      } else if (authMethod === "jwt") {
-        token = jwtToken;
-      }
-      if (token) {
-        fetchTasks(token, true);
-      }
-    };
-    loadTasks();
-  }, [authMethod, fetchTasks, getToken, jwtToken]);
+    if (token) {
+      fetchTasks(token, true);
+    }
+  }, [fetchTasks, token]);
 
   const stats = useMemo(() => {
     const urgentActive = tasks.filter((t) => t.isUrgent && !t.completed).length;
@@ -363,40 +342,25 @@ export function Main() {
     return [...urgentActive, ...normalActive, ...completed];
   }, [tasks]);
 
-  const getAuthToken = useCallback(async (): Promise<string | null> => {
-    if (authMethod === "clerk") {
-      return await getToken();
-    } else if (authMethod === "jwt") {
-      return jwtToken;
-    }
-    return null;
-  }, [authMethod, getToken, jwtToken]);
-
   const handleToggleComplete = useCallback(
     async (id: number, currentStatus: boolean) => {
-      const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { completed: !currentStatus });
       }
     },
-    [getAuthToken, updateTask]
+    [token, updateTask]
   );
 
-  // ✅ FIXED: Removed navigation - just update the task
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
-      const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { isUrgent: !currentStatus });
-        // ❌ REMOVED: Navigation logic
-        console.log("✅ Task urgent status updated (staying on Main page)");
       }
     },
-    [getAuthToken, updateTask] // ❌ REMOVED: navigate dependency
+    [token, updateTask]
   );
 
   const handleStartEdit = useCallback((task: Task) => {
-    console.log("✏️ Starting edit for task:", task.id);
     setEditingId(task.id);
     setEditTitle(task.title);
     setEditDescription(task.description || "");
@@ -406,47 +370,24 @@ export function Main() {
 
   const handleSaveEdit = useCallback(
     async (id: number) => {
-      if (!editTitle.trim()) {
-        console.log("❌ Title is empty, cannot save");
-        return;
-      }
+      if (!editTitle.trim() || !token) return;
 
-      console.log("💾 Saving task:", {
-        id,
+      await updateTask(token, id, {
         title: editTitle,
-        description: editDescription,
-        deadline: editDeadline,
+        description: editDescription || null,
+        deadline: editDeadline || null,
         isUrgent: editIsUrgent,
       });
-
-      const token = await getAuthToken();
-      if (token) {
-        await updateTask(token, id, {
-          title: editTitle,
-          description: editDescription || null,
-          deadline: editDeadline || null,
-          isUrgent: editIsUrgent,
-        });
-        setEditingId(null);
-      }
+      setEditingId(null);
     },
-    [
-      editTitle,
-      editDescription,
-      editDeadline,
-      editIsUrgent,
-      getAuthToken,
-      updateTask,
-    ]
+    [editTitle, editDescription, editDeadline, editIsUrgent, token, updateTask]
   );
 
   const handleCancelEdit = useCallback(() => {
-    console.log("❌ Canceling edit");
     setEditingId(null);
   }, []);
 
   const handleEditChange = useCallback((field: string, value: any) => {
-    console.log("📝 Edit change:", field, "=", value);
     switch (field) {
       case "title":
         setEditTitle(value);
@@ -464,13 +405,10 @@ export function Main() {
   }, []);
 
   const handleDelete = useCallback(async () => {
-    if (!deleteConfirm) return;
-    const token = await getAuthToken();
-    if (token) {
-      await deleteTask(token, deleteConfirm);
-      setDeleteConfirm(null);
-    }
-  }, [deleteConfirm, getAuthToken, deleteTask]);
+    if (!deleteConfirm || !token) return;
+    await deleteTask(token, deleteConfirm);
+    setDeleteConfirm(null);
+  }, [deleteConfirm, token, deleteTask]);
 
   const editData = useMemo(
     () => ({
@@ -484,7 +422,6 @@ export function Main() {
 
   return (
     <div className="flex-1 p-6 space-y-6 overflow-auto">
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
         <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
           <div className="flex items-center gap-4">
@@ -545,7 +482,6 @@ export function Main() {
         </div>
       </div>
 
-      {/* Tasks List */}
       {sortedTasks.length > 0 ? (
         <div className="space-y-3">
           {stats.urgentCount > 0 && (

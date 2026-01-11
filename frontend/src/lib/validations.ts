@@ -1,9 +1,12 @@
 // frontend/src/lib/validations.ts
 import { z } from "zod";
 
-// Auth Schemas - UPDATED: Removed Gmail-only restriction
+
 export const loginSchema = z.object({
-  email: z.string().min(1, "Email is required").email("Invalid email address"),
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .email("Invalid email address"),
   password: z
     .string()
     .min(6, "Password must be at least 6 characters")
@@ -12,14 +15,16 @@ export const loginSchema = z.object({
 
 export const registerSchema = loginSchema
   .extend({
-    confirmPassword: z.string().min(6, "Confirm password is required"),
+    confirmPassword: z
+      .string()
+      .min(6, "Confirm password is required"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
 
-// Task Schemas
+
 export const taskSchema = z.object({
   title: z
     .string()
@@ -41,8 +46,17 @@ export const taskSchema = z.object({
 });
 
 export const updateTaskSchema = z.object({
-  title: z.string().min(1, "Title is required").max(500).trim().optional(),
-  description: z.string().max(2000).optional().nullable(),
+  title: z
+    .string()
+    .min(1, "Title is required")
+    .max(500)
+    .trim()
+    .optional(),
+  description: z
+    .string()
+    .max(2000)
+    .optional()
+    .nullable(),
   deadline: z
     .string()
     .datetime("Invalid date format")
@@ -55,10 +69,14 @@ export const updateTaskSchema = z.object({
 });
 
 export const searchSchema = z.object({
-  query: z.string().min(1, "Search query is required").max(200).trim(),
+  query: z
+    .string()
+    .min(1, "Search query is required")
+    .max(200)
+    .trim(),
 });
 
-// Types
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type TaskInput = z.infer<typeof taskSchema>;

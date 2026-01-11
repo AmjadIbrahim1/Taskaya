@@ -1,4 +1,4 @@
-// src/components/layouts/MainLayout.tsx - ENHANCED with breadcrumbs & page title
+// frontend/src/components/layouts/MainLayout.tsx
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Side } from "../Side";
@@ -6,21 +6,16 @@ import { AddTask } from "../AddTask";
 import { Search } from "../Search";
 import { Breadcrumbs } from "../Breadcrumbs";
 
-interface MainLayoutProps {
-  authMethod: "clerk" | "jwt" | null;
-}
-
 const pageTitles: Record<string, string> = {
   "/app": "All Tasks",
   "/app/completed": "Completed Tasks",
   "/app/urgent": "Urgent Tasks",
 };
 
-export function MainLayout({ authMethod }: MainLayoutProps) {
+export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Update page title
   useEffect(() => {
     const title = pageTitles[location.pathname] || "Taskaya";
     document.title = `${title} | Taskaya`;
@@ -62,9 +57,17 @@ export function MainLayout({ authMethod }: MainLayoutProps) {
 
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-0 pt-16 lg:pt-0">
         <Breadcrumbs />
-        <Search authMethod={authMethod} />
-        <AddTask authMethod={authMethod} />
-        <Outlet context={{ authMethod }} />
+        <Search />
+
+        <div className="hidden lg:block">
+          <AddTask />
+        </div>
+
+        <Outlet />
+
+        <div className="lg:hidden">
+          <AddTask />
+        </div>
       </div>
     </div>
   );

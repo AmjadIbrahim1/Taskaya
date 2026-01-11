@@ -1,8 +1,7 @@
-// src/components/Completed.tsx - ENHANCED with navigation on toggle
+// src/components/Completed.tsx
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { Task } from "@/store";
 import {
   CheckCircle2,
@@ -13,7 +12,6 @@ import {
   Save,
   X,
   AlertCircle,
-  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -209,22 +207,9 @@ const CompletedTaskCard = memo(
 
 CompletedTaskCard.displayName = "CompletedTaskCard";
 
-type OutletContext = {
-  authMethod: "clerk" | "jwt" | null;
-};
-
-export function Completed({
-  authMethod: propAuthMethod,
-}: {
-  authMethod?: "clerk" | "jwt" | null;
-}) {
+export function Completed() {
   const navigate = useNavigate();
-  const { getToken } = useAuth();
-  const { token: jwtToken } = useAuthStore();
-  const outletContext = useOutletContext<OutletContext>();
-
-  const authMethod = propAuthMethod || outletContext?.authMethod || null;
-
+  const { token } = useAuthStore();
   const { tasks, getCompletedTasks, updateTask, deleteTask, isLoading } =
     useTaskStore();
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -235,21 +220,10 @@ export function Completed({
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   useEffect(() => {
-    const loadCompletedTasks = async () => {
-      let token: string | null = null;
-
-      if (authMethod === "clerk") {
-        token = await getToken();
-      } else if (authMethod === "jwt") {
-        token = jwtToken;
-      }
-
-      if (token) {
-        getCompletedTasks(token);
-      }
-    };
-    loadCompletedTasks();
-  }, [getCompletedTasks, getToken, authMethod, jwtToken]);
+    if (token) {
+      getCompletedTasks(token);
+    }
+  }, [getCompletedTasks, token]);
 
   const completedTasks = useMemo(
     () => tasks.filter((t) => t.completed === true),
@@ -268,53 +242,35 @@ export function Completed({
     };
   }, [completedTasks]);
 
-  const getAuthToken = useCallback(async (): Promise<string | null> => {
-    if (authMethod === "clerk") {
-      return await getToken();
-    } else if (authMethod === "jwt") {
-      return jwtToken;
-    }
-    return null;
-  }, [authMethod, getToken, jwtToken]);
-
   const handleToggleComplete = useCallback(
     async (id: number, currentStatus: boolean) => {
-      const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { completed: !currentStatus });
       }
     },
-    [getAuthToken, updateTask]
+    [token, updateTask]
   );
 
-  // ✅ NEW: Navigate to Urgent ONLY when marking completed task as urgent
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
-      const token = await getAuthToken();
       if (token) {
         const newUrgentStatus = !currentStatus;
         await updateTask(token, id, { isUrgent: newUrgentStatus });
 
-        // ✅ Navigate to Urgent tab ONLY if marking as urgent
         if (newUrgentStatus) {
-          console.log("🔥 Navigating to Urgent tab from Completed");
-          navigate("/urgent");
+          navigate("/app/urgent");
         }
-        // ❌ Do NOT navigate when removing urgent status
       }
     },
-    [getAuthToken, updateTask, navigate]
+    [token, updateTask, navigate]
   );
 
   const handleDelete = useCallback(async () => {
-    if (deleteConfirm) {
-      const token = await getAuthToken();
-      if (token) {
-        await deleteTask(token, deleteConfirm);
-        setDeleteConfirm(null);
-      }
+    if (deleteConfirm && token) {
+      await deleteTask(token, deleteConfirm);
+      setDeleteConfirm(null);
     }
-  }, [deleteConfirm, getAuthToken, deleteTask]);
+  }, [deleteConfirm, token, deleteTask]);
 
   const startEdit = useCallback((task: Task) => {
     setEditingId(task.id);
@@ -326,28 +282,18 @@ export function Completed({
 
   const saveEdit = useCallback(
     async (id: number) => {
-      if (editTitle.trim()) {
-        const token = await getAuthToken();
-        if (token) {
-          await updateTask(token, id, {
-            title: editTitle,
-            description: editDescription || null,
-            deadline: editDeadline || null,
-            isUrgent: editIsUrgent,
-            completed: true,
-          });
-          setEditingId(null);
-        }
+      if (editTitle.trim() && token) {
+        await updateTask(token, id, {
+          title: editTitle,
+          description: editDescription || null,
+          deadline: editDeadline || null,
+          isUrgent: editIsUrgent,
+          completed: true,
+        });
+        setEditingId(null);
       }
     },
-    [
-      editTitle,
-      editDescription,
-      editDeadline,
-      editIsUrgent,
-      getAuthToken,
-      updateTask,
-    ]
+    [editTitle, editDescription, editDeadline, editIsUrgent, token, updateTask]
   );
 
   const cancelEdit = useCallback(() => {

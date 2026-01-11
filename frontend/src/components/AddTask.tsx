@@ -1,6 +1,5 @@
-// src/components/AddTask.tsx
+// src/components/AddTask.tsx 
 import { useState, useCallback, memo } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
 import {
   Plus,
@@ -11,13 +10,8 @@ import {
 } from "lucide-react";
 import { CustomDatePicker } from "./CustomDatePicker";
 
-interface AddTaskProps {
-  authMethod: "clerk" | "jwt" | null;
-}
-
-export const AddTask = memo(({ authMethod }: AddTaskProps) => {
-  const { getToken } = useAuth();
-  const { token: jwtToken } = useAuthStore();
+export const AddTask = memo(() => {
+  const { token } = useAuthStore();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -31,23 +25,9 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
       e.preventDefault();
       const trimmedTitle = title.trim();
 
-      if (!trimmedTitle) return;
+      if (!trimmedTitle || !token) return;
 
       try {
-        let token: string | null = null;
-
-        // Get token based on auth method
-        if (authMethod === "clerk") {
-          token = await getToken();
-        } else if (authMethod === "jwt") {
-          token = jwtToken;
-        }
-
-        if (!token) {
-          console.error("No token available");
-          return;
-        }
-
         await addTask(
           token,
           trimmedTitle,
@@ -56,7 +36,6 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
           isUrgent
         );
 
-        // Reset form
         setTitle("");
         setDescription("");
         setDeadline("");
@@ -67,7 +46,7 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
         console.error("Failed to add task:", error);
       }
     },
-    [title, description, deadline, isUrgent, addTask, getToken, authMethod, jwtToken]
+    [title, description, deadline, isUrgent, addTask, token]
   );
 
   const handleClearDeadline = useCallback(() => {
@@ -87,10 +66,12 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
   }, []);
 
   return (
-    <div className="p-6 border-b bg-gradient-to-br from-card/50 to-primary/5 backdrop-blur-sm">
+    <div
+      id="mobile-add-task"
+      className="p-6 border-b bg-gradient-to-br from-card/50 to-primary/5 backdrop-blur-sm"
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Main Input Row */}
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
             value={title}
@@ -100,54 +81,55 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
             disabled={isLoading}
           />
 
-          <button
-            type="button"
-            onClick={toggleDescription}
-            className={`p-4 rounded-2xl border-2 transition-all duration-200 shadow-lg hover:scale-105 ${
-              showDescription
-                ? "bg-gradient-to-br from-primary to-purple-500 text-white border-primary"
-                : "bg-background text-muted-foreground hover:text-foreground hover:border-primary/50 border-input"
-            }`}
-            disabled={isLoading}
-            title="Add Description"
-          >
-            <FileText className="w-6 h-6" />
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={toggleDescription}
+              className={`flex-1 sm:flex-none p-4 rounded-2xl border-2 transition-all duration-200 shadow-lg hover:scale-105 ${
+                showDescription
+                  ? "bg-gradient-to-br from-primary to-purple-500 text-white border-primary"
+                  : "bg-background text-muted-foreground hover:text-foreground hover:border-primary/50 border-input"
+              }`}
+              disabled={isLoading}
+              title="Add Description"
+            >
+              <FileText className="w-6 h-6 mx-auto" />
+            </button>
 
-          <button
-            type="button"
-            onClick={toggleCalendar}
-            className={`p-4 rounded-2xl border-2 transition-all duration-200 shadow-lg hover:scale-105 ${
-              showCalendar || deadline
-                ? "bg-gradient-to-br from-primary to-purple-500 text-white border-primary"
-                : "bg-background text-muted-foreground hover:text-foreground hover:border-primary/50 border-input"
-            }`}
-            disabled={isLoading}
-            title="Set Deadline"
-          >
-            <CalendarIcon className="w-6 h-6" />
-          </button>
+            <button
+              type="button"
+              onClick={toggleCalendar}
+              className={`flex-1 sm:flex-none p-4 rounded-2xl border-2 transition-all duration-200 shadow-lg hover:scale-105 ${
+                showCalendar || deadline
+                  ? "bg-gradient-to-br from-primary to-purple-500 text-white border-primary"
+                  : "bg-background text-muted-foreground hover:text-foreground hover:border-primary/50 border-input"
+              }`}
+              disabled={isLoading}
+              title="Set Deadline"
+            >
+              <CalendarIcon className="w-6 h-6 mx-auto" />
+            </button>
 
-          <button
-            type="submit"
-            disabled={isLoading || !title.trim()}
-            className="px-8 py-4 rounded-2xl bg-gradient-to-r from-primary via-purple-500 to-primary text-white font-black text-lg hover:opacity-90 active:scale-95 transition-all duration-200 shadow-xl shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 bg-[length:200%_auto] animate-gradient"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin" />
-                Adding...
-              </>
-            ) : (
-              <>
-                <Plus className="w-6 h-6" />
-                Add
-              </>
-            )}
-          </button>
+            <button
+              type="submit"
+              disabled={isLoading || !title.trim()}
+              className="flex-1 sm:flex-none px-8 py-4 rounded-2xl bg-gradient-to-r from-primary via-purple-500 to-primary text-white font-black text-lg hover:opacity-90 active:scale-95 transition-all duration-200 shadow-xl shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 bg-[length:200%_auto] animate-gradient"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span className="hidden sm:inline">Adding...</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-6 h-6" />
+                  <span className="hidden sm:inline">Add</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Description Field */}
         {showDescription && (
           <div className="animate-in slide-in-from-top-4 duration-300">
             <div className="relative">
@@ -173,7 +155,6 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
           </div>
         )}
 
-        {/* Calendar and Urgent Row */}
         {showCalendar && (
           <div className="flex gap-3 animate-in slide-in-from-top-4 duration-300">
             <div className="flex-1">
@@ -198,12 +179,12 @@ export const AddTask = memo(({ authMethod }: AddTaskProps) => {
           </div>
         )}
 
-        {/* Selected Deadline Display */}
         {deadline && !showCalendar && (
           <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/30 rounded-xl animate-in fade-in duration-300">
             <CalendarIcon className="w-4 h-4 text-primary" />
             <span className="text-sm font-bold text-primary flex-1">
-              Deadline: {new Date(deadline).toLocaleDateString("en-US", {
+              Deadline:{" "}
+              {new Date(deadline).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
                 year: "numeric",

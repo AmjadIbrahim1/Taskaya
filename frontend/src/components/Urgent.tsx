@@ -1,8 +1,6 @@
-// src/components/Urgent.tsx - UPDATED: Non-clickable emoji
+// src/components/Urgent.tsx
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
-import { useOutletContext } from "react-router-dom";
 import type { Task } from "@/store";
 import {
   AlertCircle,
@@ -13,7 +11,6 @@ import {
   Calendar,
   Save,
   X,
-  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -123,7 +120,6 @@ const UrgentTaskCard = memo(
             ) : (
               <>
                 <div className="flex items-start gap-2">
-                  {/* UPDATED: Non-clickable urgent emoji */}
                   <span
                     className="text-2xl animate-pulse pointer-events-none select-none"
                     aria-label="Urgent task"
@@ -233,21 +229,8 @@ const UrgentTaskCard = memo(
 
 UrgentTaskCard.displayName = "UrgentTaskCard";
 
-type OutletContext = {
-  authMethod: "clerk" | "jwt" | null;
-};
-
-export function Urgent({
-  authMethod: propAuthMethod,
-}: {
-  authMethod?: "clerk" | "jwt" | null;
-}) {
-  const { getToken } = useAuth();
-  const { token: jwtToken } = useAuthStore();
-  const outletContext = useOutletContext<OutletContext>();
-
-  const authMethod = propAuthMethod || outletContext?.authMethod || null;
-
+export function Urgent() {
+  const { token } = useAuthStore();
   const { tasks, getUrgentTasks, updateTask, deleteTask, isLoading } =
     useTaskStore();
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -258,28 +241,16 @@ export function Urgent({
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   useEffect(() => {
-    const loadUrgentTasks = async () => {
-      let token: string | null = null;
-
-      if (authMethod === "clerk") {
-        token = await getToken();
-      } else if (authMethod === "jwt") {
-        token = jwtToken;
-      }
-
-      if (token) {
-        getUrgentTasks(token);
-      }
-    };
-    loadUrgentTasks();
-  }, [getUrgentTasks, getToken, authMethod, jwtToken]);
+    if (token) {
+      getUrgentTasks(token);
+    }
+  }, [getUrgentTasks, token]);
 
   const urgentTasks = useMemo(
     () => tasks.filter((t) => t.isUrgent === true),
     [tasks]
   );
 
-  // Stats for cross-tab display
   const stats = useMemo(() => {
     const urgentActive = urgentTasks.filter((t) => !t.completed).length;
     const urgentCompleted = urgentTasks.filter((t) => t.completed).length;
@@ -292,44 +263,30 @@ export function Urgent({
     };
   }, [urgentTasks]);
 
-  const getAuthToken = useCallback(async (): Promise<string | null> => {
-    if (authMethod === "clerk") {
-      return await getToken();
-    } else if (authMethod === "jwt") {
-      return jwtToken;
-    }
-    return null;
-  }, [authMethod, getToken, jwtToken]);
-
   const handleToggleComplete = useCallback(
     async (id: number, currentStatus: boolean) => {
-      const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { completed: !currentStatus });
       }
     },
-    [getAuthToken, updateTask]
+    [token, updateTask]
   );
 
   const handleToggleUrgent = useCallback(
     async (id: number, currentStatus: boolean) => {
-      const token = await getAuthToken();
       if (token) {
         await updateTask(token, id, { isUrgent: !currentStatus });
       }
     },
-    [getAuthToken, updateTask]
+    [token, updateTask]
   );
 
   const handleDelete = useCallback(async () => {
-    if (deleteConfirm) {
-      const token = await getAuthToken();
-      if (token) {
-        await deleteTask(token, deleteConfirm);
-        setDeleteConfirm(null);
-      }
+    if (deleteConfirm && token) {
+      await deleteTask(token, deleteConfirm);
+      setDeleteConfirm(null);
     }
-  }, [deleteConfirm, getAuthToken, deleteTask]);
+  }, [deleteConfirm, token, deleteTask]);
 
   const startEdit = useCallback((task: Task) => {
     setEditingId(task.id);
@@ -341,27 +298,17 @@ export function Urgent({
 
   const saveEdit = useCallback(
     async (id: number) => {
-      if (editTitle.trim()) {
-        const token = await getAuthToken();
-        if (token) {
-          await updateTask(token, id, {
-            title: editTitle,
-            description: editDescription || null,
-            deadline: editDeadline || null,
-            isUrgent: editIsUrgent,
-          });
-          setEditingId(null);
-        }
+      if (editTitle.trim() && token) {
+        await updateTask(token, id, {
+          title: editTitle,
+          description: editDescription || null,
+          deadline: editDeadline || null,
+          isUrgent: editIsUrgent,
+        });
+        setEditingId(null);
       }
     },
-    [
-      editTitle,
-      editDescription,
-      editDeadline,
-      editIsUrgent,
-      getAuthToken,
-      updateTask,
-    ]
+    [editTitle, editDescription, editDeadline, editIsUrgent, token, updateTask]
   );
 
   const cancelEdit = useCallback(() => {
@@ -417,7 +364,6 @@ export function Urgent({
         </div>
       </div>
 
-      {/* Stats Grid - Showing All Tasks & Completed */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-500 delay-100">
         <div className="bg-gradient-to-br from-red-500/10 to-orange-500/10 border-2 border-red-500/30 rounded-2xl p-6">
           <div className="flex items-center justify-between">

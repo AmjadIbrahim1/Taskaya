@@ -1,38 +1,20 @@
-// src/components/Search.tsx - ENHANCED with debounce
+// src/components/Search.tsx
 import { useState, useEffect, useCallback, memo, useRef } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import { useAuthStore, useTaskStore } from "@/store";
 import { Search as SearchIcon, X, Sparkles, Loader2 } from "lucide-react";
 
-interface SearchProps {
-  authMethod: "clerk" | "jwt" | null;
-}
-
-export const Search = memo(({ authMethod }: SearchProps) => {
-  const { getToken } = useAuth();
-  const { token: jwtToken } = useAuthStore();
+export const Search = memo(() => {
+  const { token } = useAuthStore();
   const [query, setQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const { tasks, allTasks, filterTasks, fetchTasks } = useTaskStore();
-  const debounceTimer = useRef<NodeJS.Timeout>();
+const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const loadAllTasks = async () => {
-      let token: string | null = null;
-
-      if (authMethod === "clerk") {
-        token = await getToken();
-      } else if (authMethod === "jwt") {
-        token = jwtToken;
-      }
-
-      if (token) {
-        await fetchTasks(token, true);
-      }
-    };
-
-    loadAllTasks();
-  }, [fetchTasks, getToken, authMethod, jwtToken]);
+    if (token) {
+      fetchTasks(token);
+    }
+  }, [token, fetchTasks]);
 
   const debouncedFilter = useCallback(
     (value: string) => {

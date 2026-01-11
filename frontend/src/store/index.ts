@@ -1,7 +1,15 @@
-// src/store/index.ts - ENHANCED with toast notifications
+// src/store/index.ts
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { toast } from "@/lib/toast";
+
+const API_URL = (import.meta.env.VITE_API_URL || "https://taskaya-backend-production.up.railway.app").replace(/\/+$/, "");
+const CACHE_TIME = 5000;
+
+console.log("🔗 API Configuration:");
+console.log("   Environment:", import.meta.env.MODE);
+console.log("   API URL:", API_URL);
+console.log("   ✅ Trailing slashes removed automatically");
 
 interface User {
   id: number;
@@ -23,6 +31,81 @@ export interface Task {
   updated_at: string;
 }
 
+const fetchAPI = async (
+  url: string,
+  token: string,
+  options: RequestInit = {}
+) => {
+  console.log(`🌐 API Request: ${options.method || "GET"} ${url}`);
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  const contentType = response.headers.get("content-type");
+  const hasJsonContent = contentType && contentType.includes("application/json");
+
+  let data;
+  if (hasJsonContent) {
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = { error: "Invalid response from server" };
+    }
+  } else {
+    const text = await response.text();
+    data = { error: text || "Invalid response from server" };
+  }
+
+  if (!response.ok) {
+    console.error(`❌ API Error (${response.status}):`, data);
+    throw new Error(data.error || data.message || `Request failed: ${response.status}`);
+  }
+
+  return data;
+};
+
+const fetchAPINoAuth = async (url: string, options: RequestInit = {}) => {
+  console.log(`🌐 API Request (No Auth): ${options.method || "GET"} ${url}`);
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+  const contentType = response.headers.get("content-type");
+  const hasJsonContent = contentType && contentType.includes("application/json");
+
+  let data;
+  if (hasJsonContent) {
+    try {
+      data = await response.json();
+    } catch (e) {
+      console.error("Failed to parse JSON:", e);
+      data = { error: "Invalid response from server" };
+    }
+  } else {
+    const text = await response.text();
+    console.error("Non-JSON response:", text);
+    data = { error: text || "Invalid response from server" };
+  }
+
+  if (!response.ok) {
+    console.error(`❌ API Error (${response.status}):`, data);
+    throw new Error(data.error || data.message || `Request failed: ${response.status}`);
+  }
+
+  return data;
+};
+
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -37,84 +120,6 @@ interface AuthState {
   clearError: () => void;
   initializeAuth: () => void;
 }
-
-interface TaskState {
-  tasks: Task[];
-  allTasks: Task[];
-  completedTasks: Task[];
-  urgentTasks: Task[];
-  isLoading: boolean;
-  error: string | null;
-  lastFetch: number;
-  lastCompletedFetch: number;
-  lastUrgentFetch: number;
-  searchQuery: string;
-  currentView: "all" | "completed" | "urgent";
-  pendingRequests: Set<string>;
-
-  fetchTasks: (token: string, force?: boolean) => Promise<void>;
-  addTask: (
-    token: string,
-    title: string,
-    description?: string,
-    deadline?: string,
-    isUrgent?: boolean
-  ) => Promise<void>;
-  updateTask: (token: string, id: number, data: Partial<Task>) => Promise<void>;
-  deleteTask: (token: string, id: number) => Promise<void>;
-  completeTask: (token: string, id: number) => Promise<void>;
-  filterTasks: (query: string) => void;
-  setViewTasks: (view: "all" | "completed" | "urgent") => void;
-  setCurrentView: (view: "all" | "completed" | "urgent") => void;
-  clearError: () => void;
-  resetTasks: () => void;
-  getCompletedTasks: (token: string) => Promise<void>;
-  getUrgentTasks: (token: string) => Promise<void>;
-}
-
-const API_URL = "http://localhost:5000/api";
-const CACHE_TIME = 5000;
-
-const fetchAPI = async (
-  url: string,
-  token: string,
-  options: RequestInit = {}
-) => {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || `Request failed: ${response.status}`);
-  }
-
-  return data;
-};
-
-const fetchAPINoAuth = async (url: string, options: RequestInit = {}) => {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || `Request failed: ${response.status}`);
-  }
-
-  return data;
-};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -138,11 +143,13 @@ export const useAuthStore = create<AuthState>()(
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          const data = await fetchAPINoAuth(`${API_URL}/auth/login`, {
+          console.log("🔐 Attempting login...");
+          const data = await fetchAPINoAuth(`${API_URL}/api/auth/login`, {
             method: "POST",
             body: JSON.stringify({ email, password }),
           });
 
+          console.log("✅ Login successful!");
           set({
             user: data.user,
             token: data.accessToken,
@@ -154,8 +161,8 @@ export const useAuthStore = create<AuthState>()(
 
           toast.success(`Welcome back, ${data.user.email}! 👋`);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Login failed";
+          const message = error instanceof Error ? error.message : "Login failed";
+          console.error("❌ Login error:", message);
           set({ error: message, isLoading: false });
           toast.error(message);
           throw error;
@@ -165,11 +172,13 @@ export const useAuthStore = create<AuthState>()(
       register: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          const data = await fetchAPINoAuth(`${API_URL}/auth/register`, {
+          console.log("📝 Attempting registration...");
+          const data = await fetchAPINoAuth(`${API_URL}/api/auth/register`, {
             method: "POST",
             body: JSON.stringify({ email, password }),
           });
 
+          console.log("✅ Registration successful!");
           set({
             user: data.user,
             token: data.accessToken,
@@ -181,8 +190,8 @@ export const useAuthStore = create<AuthState>()(
 
           toast.success(`Account created successfully! Welcome! 🎉`);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Registration failed";
+          const message = error instanceof Error ? error.message : "Registration failed";
+          console.error("❌ Registration error:", message);
           set({ error: message, isLoading: false });
           toast.error(message);
           throw error;
@@ -203,7 +212,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          const data = await fetchAPINoAuth(`${API_URL}/auth/refresh`, {
+          const data = await fetchAPINoAuth(`${API_URL}/api/auth/refresh`, {
             method: "POST",
             body: JSON.stringify({ refreshToken }),
           });
@@ -233,12 +242,12 @@ export const useAuthStore = create<AuthState>()(
 
         if (refreshToken) {
           try {
-            await fetchAPINoAuth(`${API_URL}/auth/logout`, {
+            await fetchAPINoAuth(`${API_URL}/api/auth/logout`, {
               method: "POST",
               body: JSON.stringify({ refreshToken }),
             });
           } catch (error) {
-            console.error("Logout request failed:", error);
+            console.error("Logout error:", error);
           }
         }
 
@@ -267,6 +276,34 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
+interface TaskState {
+  tasks: Task[];
+  allTasks: Task[];
+  completedTasks: Task[];
+  urgentTasks: Task[];
+  isLoading: boolean;
+  error: string | null;
+  lastFetch: number;
+  lastCompletedFetch: number;
+  lastUrgentFetch: number;
+  searchQuery: string;
+  currentView: "all" | "completed" | "urgent";
+  pendingRequests: Set<string>;
+
+  fetchTasks: (token: string, force?: boolean) => Promise<void>;
+  addTask: (token: string, title: string, description?: string, deadline?: string, isUrgent?: boolean) => Promise<void>;
+  updateTask: (token: string, id: number, data: Partial<Task>) => Promise<void>;
+  deleteTask: (token: string, id: number) => Promise<void>;
+  completeTask: (token: string, id: number) => Promise<void>;
+  filterTasks: (query: string) => void;
+  setViewTasks: (view: "all" | "completed" | "urgent") => void;
+  setCurrentView: (view: "all" | "completed" | "urgent") => void;
+  clearError: () => void;
+  resetTasks: () => void;
+  getCompletedTasks: (token: string) => Promise<void>;
+  getUrgentTasks: (token: string) => Promise<void>;
+}
+
 export const useTaskStore = create<TaskState>()((set, get) => ({
   tasks: [],
   allTasks: [],
@@ -286,7 +323,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     get().setViewTasks(view);
   },
 
-  setViewTasks: (view: "all" | "completed" | "urgent") => {
+  setViewTasks: (view) => {
     const { allTasks, completedTasks, urgentTasks } = get();
     let filtered: Task[];
 
@@ -297,10 +334,8 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       case "urgent":
         filtered = urgentTasks;
         break;
-      case "all":
       default:
         filtered = allTasks;
-        break;
     }
 
     set({ tasks: filtered, currentView: view });
@@ -334,18 +369,14 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     try {
       const [pendingData, completedData, urgentData] = await Promise.all([
-        fetchAPI(`${API_URL}/tasks`, token),
-        fetchAPI(`${API_URL}/tasks/completed`, token),
-        fetchAPI(`${API_URL}/tasks/urgent`, token),
+        fetchAPI(`${API_URL}/api/tasks`, token),
+        fetchAPI(`${API_URL}/api/tasks/completed`, token),
+        fetchAPI(`${API_URL}/api/tasks/urgent`, token),
       ]);
 
       const allTasksMap = new Map<number, Task>();
 
-      [
-        ...pendingData.tasks,
-        ...completedData.tasks,
-        ...urgentData.tasks,
-      ].forEach((task) => {
+      [...pendingData.tasks, ...completedData.tasks, ...urgentData.tasks].forEach((task) => {
         allTasksMap.set(task.id, task);
       });
 
@@ -361,8 +392,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         pendingRequests: new Set(pendingRequests),
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to fetch tasks";
+      const message = error instanceof Error ? error.message : "Failed to fetch tasks";
       pendingRequests.delete(requestKey);
       set({
         error: message,
@@ -374,17 +404,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   },
 
   getCompletedTasks: async (token: string) => {
-    if (!token) {
-      set({ error: "Please login to view tasks" });
-      return;
-    }
+    if (!token) return;
 
     const requestKey = "fetch-completed-tasks";
     const { pendingRequests, lastCompletedFetch, completedTasks } = get();
 
-    if (pendingRequests.has(requestKey)) {
-      return;
-    }
+    if (pendingRequests.has(requestKey)) return;
 
     const now = Date.now();
 
@@ -394,14 +419,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     }
 
     pendingRequests.add(requestKey);
-    set({
-      isLoading: true,
-      error: null,
-      pendingRequests: new Set(pendingRequests),
-    });
+    set({ isLoading: true, error: null, pendingRequests: new Set(pendingRequests) });
 
     try {
-      const data = await fetchAPI(`${API_URL}/tasks/completed`, token);
+      const data = await fetchAPI(`${API_URL}/api/tasks/completed`, token);
 
       pendingRequests.delete(requestKey);
       set({
@@ -413,32 +434,20 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         pendingRequests: new Set(pendingRequests),
       });
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch completed tasks";
+      const message = error instanceof Error ? error.message : "Failed to fetch completed tasks";
       pendingRequests.delete(requestKey);
-      set({
-        error: message,
-        isLoading: false,
-        pendingRequests: new Set(pendingRequests),
-      });
+      set({ error: message, isLoading: false, pendingRequests: new Set(pendingRequests) });
       toast.error(message);
     }
   },
 
   getUrgentTasks: async (token: string) => {
-    if (!token) {
-      set({ error: "Please login to view tasks" });
-      return;
-    }
+    if (!token) return;
 
     const requestKey = "fetch-urgent-tasks";
     const { pendingRequests, lastUrgentFetch, urgentTasks } = get();
 
-    if (pendingRequests.has(requestKey)) {
-      return;
-    }
+    if (pendingRequests.has(requestKey)) return;
 
     const now = Date.now();
 
@@ -448,14 +457,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     }
 
     pendingRequests.add(requestKey);
-    set({
-      isLoading: true,
-      error: null,
-      pendingRequests: new Set(pendingRequests),
-    });
+    set({ isLoading: true, error: null, pendingRequests: new Set(pendingRequests) });
 
     try {
-      const data = await fetchAPI(`${API_URL}/tasks/urgent`, token);
+      const data = await fetchAPI(`${API_URL}/api/tasks/urgent`, token);
 
       pendingRequests.delete(requestKey);
       set({
@@ -467,14 +472,9 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         pendingRequests: new Set(pendingRequests),
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to fetch urgent tasks";
+      const message = error instanceof Error ? error.message : "Failed to fetch urgent tasks";
       pendingRequests.delete(requestKey);
-      set({
-        error: message,
-        isLoading: false,
-        pendingRequests: new Set(pendingRequests),
-      });
+      set({ error: message, isLoading: false, pendingRequests: new Set(pendingRequests) });
       toast.error(message);
     }
   },
@@ -490,9 +490,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const trimmedQuery = query.trim().toLowerCase();
     const filtered = allTasks.filter((task) => {
       const titleMatch = task.title.toLowerCase().includes(trimmedQuery);
-      const descriptionMatch = task.description
-        ?.toLowerCase()
-        .includes(trimmedQuery);
+      const descriptionMatch = task.description?.toLowerCase().includes(trimmedQuery);
       return titleMatch || descriptionMatch;
     });
 
@@ -500,19 +498,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   },
 
   addTask: async (token, title, description, deadline, isUrgent) => {
-    if (!token) {
-      set({ error: "Please login to add tasks" });
-      throw new Error("Please login to add tasks");
-    }
-
-    if (!title || !title.trim()) {
-      set({ error: "Task title is required" });
-      throw new Error("Task title is required");
-    }
+    if (!token) throw new Error("Please login to add tasks");
+    if (!title || !title.trim()) throw new Error("Task title is required");
 
     set({ isLoading: true, error: null });
     try {
-      await fetchAPI(`${API_URL}/tasks`, token, {
+      await fetchAPI(`${API_URL}/api/tasks`, token, {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
@@ -529,8 +520,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       set({ isLoading: false });
       toast.success("Task added successfully! ✅");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to add task";
+      const message = error instanceof Error ? error.message : "Failed to add task";
       set({ error: message, isLoading: false });
       toast.error(message);
       throw error;
@@ -538,14 +528,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   },
 
   updateTask: async (token, id, taskData) => {
-    if (!token) {
-      set({ error: "Please login to update tasks" });
-      throw new Error("Please login to update tasks");
-    }
+    if (!token) throw new Error("Please login to update tasks");
 
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
-    // Optimistic update
     const updateTaskInArray = (arr: Task[]) =>
       arr.map((t) => (t.id === id ? { ...t, ...taskData } : t));
 
@@ -559,35 +545,24 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     try {
       const backendData: any = {};
       if (taskData.title !== undefined) backendData.title = taskData.title;
-      if (taskData.description !== undefined)
-        backendData.description = taskData.description;
-      if (taskData.deadline !== undefined)
-        backendData.deadline = taskData.deadline;
-      if (taskData.isUrgent !== undefined)
-        backendData.is_urgent = taskData.isUrgent;
-      if (taskData.completed !== undefined)
-        backendData.completed = taskData.completed;
+      if (taskData.description !== undefined) backendData.description = taskData.description;
+      if (taskData.deadline !== undefined) backendData.deadline = taskData.deadline;
+      if (taskData.isUrgent !== undefined) backendData.is_urgent = taskData.isUrgent;
+      if (taskData.completed !== undefined) backendData.completed = taskData.completed;
       if (taskData.status !== undefined) backendData.status = taskData.status;
 
-      await fetchAPI(`${API_URL}/tasks/${id}`, token, {
+      await fetchAPI(`${API_URL}/api/tasks/${id}`, token, {
         method: "PUT",
         body: JSON.stringify(backendData),
       });
 
-      set({
-        lastFetch: 0,
-        lastCompletedFetch: 0,
-        lastUrgentFetch: 0,
-      });
-
+      set({ lastFetch: 0, lastCompletedFetch: 0, lastUrgentFetch: 0 });
       toast.success("Task updated successfully! ✨");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to update task";
+      const message = error instanceof Error ? error.message : "Failed to update task";
       set({ error: message });
       toast.error(message);
 
-      // Revert on error
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
@@ -601,14 +576,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   },
 
   deleteTask: async (token, id) => {
-    if (!token) {
-      set({ error: "Please login to delete tasks" });
-      throw new Error("Please login to delete tasks");
-    }
+    if (!token) throw new Error("Please login to delete tasks");
 
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
-    // Optimistic delete
     const removeTaskFromArray = (arr: Task[]) => arr.filter((t) => t.id !== id);
 
     set({
@@ -619,24 +590,15 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     });
 
     try {
-      await fetchAPI(`${API_URL}/tasks/${id}`, token, {
-        method: "DELETE",
-      });
+      await fetchAPI(`${API_URL}/api/tasks/${id}`, token, { method: "DELETE" });
 
-      set({
-        lastFetch: 0,
-        lastCompletedFetch: 0,
-        lastUrgentFetch: 0,
-      });
-
+      set({ lastFetch: 0, lastCompletedFetch: 0, lastUrgentFetch: 0 });
       toast.success("Task deleted successfully! 🗑️");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to delete task";
+      const message = error instanceof Error ? error.message : "Failed to delete task";
       set({ error: message });
       toast.error(message);
 
-      // Revert on error
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
@@ -650,14 +612,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   },
 
   completeTask: async (token, id) => {
-    if (!token) {
-      set({ error: "Please login to complete tasks" });
-      throw new Error("Please login to complete tasks");
-    }
+    if (!token) throw new Error("Please login to complete tasks");
 
     const { tasks, allTasks, completedTasks, urgentTasks, currentView } = get();
 
-    // Optimistic update
     const updateTaskInArray = (arr: Task[]) =>
       arr.map((t) => (t.id === id ? { ...t, completed: true } : t));
 
@@ -669,25 +627,18 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     });
 
     try {
-      await fetchAPI(`${API_URL}/tasks/${id}`, token, {
+      await fetchAPI(`${API_URL}/api/tasks/${id}`, token, {
         method: "PUT",
         body: JSON.stringify({ completed: true }),
       });
 
-      set({
-        lastFetch: 0,
-        lastCompletedFetch: 0,
-        lastUrgentFetch: 0,
-      });
-
+      set({ lastFetch: 0, lastCompletedFetch: 0, lastUrgentFetch: 0 });
       toast.success("Task completed! Great job! 🎉");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to complete task";
+      const message = error instanceof Error ? error.message : "Failed to complete task";
       set({ error: message });
       toast.error(message);
 
-      // Revert on error
       if (currentView === "completed") {
         await get().getCompletedTasks(token);
       } else if (currentView === "urgent") {
